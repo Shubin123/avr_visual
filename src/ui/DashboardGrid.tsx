@@ -2,6 +2,7 @@ import ReactGridLayout, { useContainerWidth, type Layout, type LayoutItem } from
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { Editor } from './Editor';
+import { FileTabs } from './FileTabs';
 import { ErrorsPanel } from './ErrorsPanel';
 import { RegisterTable } from './RegisterTable';
 import { Panel } from './RegisterTable';
@@ -59,6 +60,7 @@ export function DashboardGrid() {
           >
             <div key="code" className="grid-widget">
               <Panel title="Code">
+                <FileTabs />
                 <Editor />
               </Panel>
             </div>

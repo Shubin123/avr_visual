@@ -29,6 +29,17 @@ export interface AssembleResult {
   warnings: AsmDiagnostic[];
 }
 
+/** For each line of `file` that produced code, the lowest flash address it maps to. */
+export function lineAddressMap(sourceMap: Map<number, SourceMapEntry>, file: string): Map<number, number> {
+  const byLine = new Map<number, number>();
+  for (const [addr, loc] of sourceMap) {
+    if (loc.file !== file) continue;
+    const existing = byLine.get(loc.line);
+    if (existing === undefined || addr < existing) byLine.set(loc.line, addr);
+  }
+  return byLine;
+}
+
 type Segment = 'CSEG' | 'DSEG' | 'ESEG';
 
 interface SymbolEntry {
@@ -106,9 +117,29 @@ function wrapSigned(value: number, bits: number): number {
   return ((value % mod) + mod) % mod;
 }
 
-export function assemble(sourceText: string, mainFileName = 'main.asm'): AssembleResult {
+/**
+ * @param projectIncludes Extra `.include`-able files (e.g. a user's own project
+ *   .inc/.asm files), keyed by filename exactly as written in `.include "..."`
+ *   (matched case-insensitively). Checked before the bundled device headers,
+ *   so a project file can shadow a bundled one of the same name if needed.
+ */
+export function assemble(
+  sourceText: string,
+  mainFileName = 'main.asm',
+  projectIncludes?: Record<string, string>,
+): AssembleResult {
   const errors: AsmDiagnostic[] = [];
   const warnings: AsmDiagnostic[] = [];
+
+  const resolveInclude = (filename: string): string | null => {
+    if (projectIncludes) {
+      const base = filename.trim().toLowerCase().replace(/^["']|["']$/g, '');
+      for (const [name, text] of Object.entries(projectIncludes)) {
+        if (name.trim().toLowerCase() === base) return text;
+      }
+    }
+    return resolveBundledInclude(filename);
+  };
 
   let lines: LogicalLine[];
   try {
@@ -118,8 +149,8 @@ export function assemble(sourceText: string, mainFileName = 'main.asm'): Assembl
     // see multi_timer.asm's comment to that effect). The file's own
     // `#ifndef _M2560DEF_INC_` guard makes an explicit user `.include` later
     // in the same file a harmless no-op.
-    const prelude = pre.expand('.include "m2560def.inc"', mainFileName, resolveBundledInclude);
-    const body = pre.expand(sourceText, mainFileName, resolveBundledInclude);
+    const prelude = pre.expand('.include "m2560def.inc"', mainFileName, resolveInclude);
+    const body = pre.expand(sourceText, mainFileName, resolveInclude);
     lines = [...prelude, ...body];
     warnings.push(...pre.messages);
   } catch (e) {

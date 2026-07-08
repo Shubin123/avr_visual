@@ -217,7 +217,7 @@ export class Preprocessor {
         const incText = resolveInclude(incName);
         if (incText === null) {
           throw new PreprocessError(
-            `Cannot find include file "${incName}" (only bundled device headers are available; paste the file's contents inline instead)`,
+            `Cannot find include file "${incName}" (add it as a project file, or paste its contents inline instead)`,
             filename,
             lineNo + 1,
           );

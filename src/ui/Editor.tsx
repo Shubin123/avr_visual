@@ -1,9 +1,57 @@
 import { useEffect, useRef } from 'react';
-import { EditorState } from '@codemirror/state';
-import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter } from '@codemirror/view';
+import { EditorState, RangeSetBuilder } from '@codemirror/state';
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+  gutter,
+  GutterMarker,
+} from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { StreamLanguage, syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
-import { useAppStore } from '../state/store';
+import { MAIN_FILE, useAppStore } from '../state/store';
+
+const EMPTY_LINES: ReadonlySet<number> = new Set();
+
+class BreakpointDotMarker extends GutterMarker {
+  toDOM() {
+    const dot = document.createElement('div');
+    dot.className = 'cm-breakpoint-dot';
+    return dot;
+  }
+}
+const breakpointDot = new BreakpointDotMarker();
+
+/** Click-to-toggle breakpoint gutter. Reads/writes through the callbacks (not
+ *  CodeMirror state) so it stays in sync with the zustand store, which is the
+ *  single source of truth the emulator/Disassembly panel also read from. */
+function breakpointGutter(getLines: () => ReadonlySet<number>, onToggle: (line: number) => void) {
+  return gutter({
+    class: 'cm-breakpoint-gutter',
+    // CodeMirror skips rendering a DOM element for lines with no marker by
+    // default, which would make most of the gutter unclickable — every line
+    // needs a (possibly empty) element so the whole column is click-to-toggle.
+    renderEmptyElements: true,
+    markers(view) {
+      const lines = getLines();
+      const builder = new RangeSetBuilder<GutterMarker>();
+      if (lines.size > 0) {
+        for (let i = 1; i <= view.state.doc.lines; i++) {
+          if (lines.has(i)) builder.add(view.state.doc.line(i).from, view.state.doc.line(i).from, breakpointDot);
+        }
+      }
+      return builder.finish();
+    },
+    domEventHandlers: {
+      mousedown(view, block) {
+        onToggle(view.state.doc.lineAt(block.from).number);
+        return true;
+      },
+    },
+  });
+}
 
 const MNEMONICS = new Set([
   'adc','add','adiw','and','andi','asr','bclr','bld','brbc','brbs','brcc','brcs','break','breq','brge','brhc','brhs',
@@ -52,9 +100,26 @@ const avrAsmLanguage = StreamLanguage.define({
 export function Editor() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
-  const setSource = useAppStore((s) => s.setSource);
+  const setActiveFileContent = useAppStore((s) => s.setActiveFileContent);
+  const toggleBreakpointLine = useAppStore((s) => s.toggleBreakpointLine);
   const source = useAppStore((s) => s.source);
-  const lastKnownDoc = useRef(source);
+  const projectFiles = useAppStore((s) => s.projectFiles);
+  const activeFile = useAppStore((s) => s.activeFile);
+  const breakpointsByFile = useAppStore((s) => s.breakpointsByFile);
+
+  const fileKey = activeFile ?? MAIN_FILE;
+  const content = activeFile === null ? source : (projectFiles[activeFile] ?? '');
+  const breakpointLines = breakpointsByFile[fileKey] ?? EMPTY_LINES;
+
+  const lastKnownDoc = useRef(content);
+  // The gutter/updateListener extensions are created once and close over
+  // these refs (not the props above) so toggling a breakpoint or typing
+  // always acts on whichever file is *currently* active, not whichever was
+  // active when the CodeMirror instance was first created.
+  const fileKeyRef = useRef(fileKey);
+  const breakpointLinesRef = useRef(breakpointLines);
+  fileKeyRef.current = fileKey;
+  breakpointLinesRef.current = breakpointLines;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -62,6 +127,10 @@ export function Editor() {
       doc: lastKnownDoc.current,
       extensions: [
         lineNumbers(),
+        breakpointGutter(
+          () => breakpointLinesRef.current,
+          (line) => toggleBreakpointLine(fileKeyRef.current, line),
+        ),
         highlightActiveLine(),
         highlightActiveLineGutter(),
         history(),
@@ -72,7 +141,7 @@ export function Editor() {
           if (update.docChanged) {
             const text = update.state.doc.toString();
             lastKnownDoc.current = text;
-            setSource(text);
+            setActiveFileContent(text);
           }
         }),
         EditorView.theme({
@@ -87,14 +156,21 @@ export function Editor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Re-sync the doc when the store's source changes from outside the editor
-  // itself (e.g. loading an example) rather than from the user typing.
+  // Re-sync the doc when the active file's content changes from outside this
+  // view itself — the user typing elsewhere is impossible (single editor),
+  // but switching files, loading an example, or an external reset all land here.
   useEffect(() => {
     const view = viewRef.current;
-    if (!view || source === lastKnownDoc.current) return;
-    lastKnownDoc.current = source;
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: source } });
-  }, [source]);
+    if (!view || content === lastKnownDoc.current) return;
+    lastKnownDoc.current = content;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
+  }, [content]);
+
+  // Force the breakpoint gutter to redraw when breakpoints change from
+  // elsewhere (the Disassembly panel) or when switching to a different file.
+  useEffect(() => {
+    viewRef.current?.dispatch({});
+  }, [breakpointLines, fileKey]);
 
   return <div className="editor-container" ref={containerRef} />;
 }
