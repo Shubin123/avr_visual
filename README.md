@@ -70,6 +70,9 @@ The board matches the classic LCD keypad shield used in the course material:
   mappings; timing/counting/interrupt behavior is verified, waveform output
   on physical pins is not the focus of this tool.
 
+
+<img width="1412" height="796" alt="Screenshot 2026-07-08 at 9 00 19 AM" src="https://github.com/user-attachments/assets/de11bc6b-caed-426e-8c12-224e9d7e1673" />
+
 ## Acknowledgments
 
 The instruction encoder, assembler, and UI here are original to this project,
