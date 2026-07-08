@@ -4,15 +4,19 @@ import { useAppStore } from '../state/store';
 import { Panel } from './RegisterTable';
 import type { LcdKeypadButton } from '../emulator/emulator';
 
-// The six-LED module from examples/a2-signaling.asm: leftmost->rightmost maps
-// to PORTL7, PORTL5, PORTL3, PORTL1, PORTB3, PORTB1 (see set_leds in that file).
+// The six-LED module from examples/a2-signaling.asm. set_leds maps r16's
+// bits to physical pins as: bit0->PORTL7, bit1->PORTL5, bit2->PORTL3,
+// bit3->PORTL1, bit4->PORTB3, bit5->PORTB1. The assignment description
+// separately defines bit5 as the leftmost LED (01) through bit0 as the
+// rightmost (06), so left-to-right on the board is PORTB1, PORTB3, PORTL1,
+// PORTL3, PORTL5, PORTL7 — NOT the same order the bits appear in the code.
 const LEDS: { port: string; bit: number; label: string }[] = [
-  { port: 'L', bit: 7, label: '01' },
-  { port: 'L', bit: 5, label: '02' },
-  { port: 'L', bit: 3, label: '03' },
-  { port: 'B', bit: 3, label: '04' },
-  { port: 'L', bit: 1, label: '05' },
-  { port: 'B', bit: 1, label: '06' },
+  { port: 'B', bit: 1, label: '01' },
+  { port: 'B', bit: 3, label: '02' },
+  { port: 'L', bit: 1, label: '03' },
+  { port: 'L', bit: 3, label: '04' },
+  { port: 'L', bit: 5, label: '05' },
+  { port: 'L', bit: 7, label: '06' },
 ];
 
 const BUTTONS: { key: LcdKeypadButton; label: string }[] = [

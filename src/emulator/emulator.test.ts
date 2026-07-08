@@ -67,7 +67,7 @@ describe('Emulator — assembled program driving real avr8js peripherals', () =>
     emu.run(40);
 
     // r16=0b00100001 -> leftmost (bit5) and rightmost (bit0) LEDs on, matching
-    // the a2-signalling.asm set_leds mapping: bit5->PORTL7, bit0->PORTB1.
+    // the a2-signalling.asm set_leds mapping: bit0->PORTL7, bit5->PORTB1.
     expect(emu.ports.L.pinState(7)).toBe(PinState.High);
     expect(emu.ports.B.pinState(1)).toBe(PinState.High);
     expect(emu.ports.L.pinState(5)).toBe(PinState.Low);
