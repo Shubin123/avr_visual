@@ -1,0 +1,390 @@
+:root {
+  --text: #1f2430;
+  --text-dim: #6b7280;
+  --bg: #f5f6f8;
+  --panel-bg: #ffffff;
+  --border: #d8dbe2;
+  --accent: #6d28d9;
+  --accent-bg: rgba(109, 40, 217, 0.1);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #e5e7eb;
+    --text-dim: #9199a8;
+    --bg: #14151a;
+    --panel-bg: #1c1e26;
+    --border: #2e303a;
+    --accent: #c084fc;
+    --accent-bg: rgba(192, 132, 252, 0.15);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--bg);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.app-subtitle {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.btn {
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.speed-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.speed-label select {
+  font-family: var(--sans);
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-bg);
+  color: var(--text);
+}
+
+.status-message {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.errors-panel {
+  max-height: 140px;
+  overflow-y: auto;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.error-line {
+  color: #ef4444;
+  padding: 2px 0;
+}
+
+.warning-line {
+  color: #d97706;
+  padding: 2px 0;
+}
+
+.error-badge,
+.warning-badge {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.app-layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr 1fr;
+  gap: 10px;
+  padding: 10px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.col-editor {
+  min-height: 0;
+}
+
+.editor-container {
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel-bg);
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-body {
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.dim {
+  color: var(--text-dim);
+}
+
+/* Registers */
+.reg-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 3px;
+}
+
+.reg-cell {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: var(--accent-bg);
+}
+
+.reg-name {
+  color: var(--text-dim);
+}
+
+/* SREG */
+.sreg-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.sreg-flag {
+  flex: 1;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 0;
+}
+
+.sreg-flag.set {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.sreg-flag-name {
+  font-weight: 600;
+}
+
+.sp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-dim);
+}
+
+/* Stack */
+.stack-meta {
+  margin-bottom: 6px;
+  color: var(--text-dim);
+}
+
+.stack-list {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.stack-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px 0;
+}
+
+.stack-empty {
+  color: var(--text-dim);
+}
+
+/* Memory map */
+.mem-region-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.tab-btn {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.mem-dump {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.mem-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  white-space: nowrap;
+}
+
+.mem-byte {
+  min-width: 1.4em;
+}
+
+.mem-names {
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Disassembly */
+.disasm-list {
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.disasm-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+  white-space: pre;
+}
+
+.disasm-row.current {
+  background: var(--accent-bg);
+}
+
+.bp-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.bp-dot.active {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+
+.disasm-addr {
+  flex-shrink: 0;
+}
+
+/* Hardware panel */
+.hw-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+
+.hw-leds {
+  display: flex;
+  gap: 4px;
+}
+
+.hw-lcd {
+  transform: scale(0.85);
+  transform-origin: top center;
+}
+
+.hw-buttons {
+  display: flex;
+  gap: 8px;
+}
