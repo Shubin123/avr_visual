@@ -69,3 +69,29 @@ The board matches the classic LCD keypad shield used in the course material:
 - PWM/timer compare-output pin overrides use best-effort Arduino Mega pin
   mappings; timing/counting/interrupt behavior is verified, waveform output
   on physical pins is not the focus of this tool.
+
+## Acknowledgments
+
+The instruction encoder, assembler, and UI here are original to this project,
+but the CPU this tool actually runs code on is not — at its core, Mega
+Visualizer is a harness around a handful of other people's work:
+
+- **[avr8js](https://github.com/wokwi/avr8js)** (Uri Shaked / Wokwi) is the
+  instruction-accurate AVR8 CPU core that every assembled program actually
+  executes on — the same engine behind Wokwi's Arduino simulator. This
+  project's assembler, debugger, and hardware panel are all built to feed it
+  a program image and observe its GPIO/peripheral state; without it there is
+  no emulator here, only an assembler.
+- **[@wokwi/elements](https://github.com/wokwi/wokwi-elements)** (also Wokwi)
+  supplies the LED, LCD1602, and pushbutton web components the hardware panel
+  renders.
+- **[CodeMirror 6](https://codemirror.net/)** powers the code editor, syntax
+  highlighting, and (via its gutter API) the breakpoint UI.
+- **[React](https://react.dev/)**, **[Zustand](https://github.com/pmndrs/zustand)**,
+  and **[Vite](https://vite.dev/)** are the UI framework, state store, and
+  build tooling. **[react-grid-layout](https://github.com/react-grid-layout/react-grid-layout)**
+  provides the draggable/resizable panel dashboard.
+- The Microchip **AVR Instruction Set Manual (DS40002198)** and the
+  **ATmega2560 device header** (`src/mega2560/m2560def.inc`, bundled verbatim)
+  are the primary sources the instruction encoder and register/SFR addresses
+  are checked against.
