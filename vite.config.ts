@@ -16,5 +16,12 @@ export default defineConfig({
   build: {
     outDir: 'docs',
   },
+  // react-draggable (a react-grid-layout dependency) reads process.env.* for
+  // a debug flag, assuming a Node-style global that Vite doesn't shim in the
+  // browser; every drag threw "process is not defined". Replacing the whole
+  // expression with {} makes that read resolve to `undefined` instead.
+  define: {
+    'process.env': '{}',
+  },
   plugins: [react()],
 })

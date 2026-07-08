@@ -6,9 +6,11 @@ import type { LcdKeypadButton } from '../emulator/emulator';
 import a2Signaling from '../../examples/a2-signaling.asm?raw';
 import multiTimer from '../../examples/multi_timer.asm?raw';
 import ledCycleDemo from '../../examples/led-cycle-demo.asm?raw';
+import lcdHelloWorld from '../../examples/lcd/hello_world.asm?raw';
 
 export const EXAMPLES: Record<string, string> = {
   'led-cycle-demo.asm': ledCycleDemo,
+  'lcd/hello_world.asm': lcdHelloWorld,
   'a2-signaling.asm': a2Signaling,
   'multi_timer.asm': multiTimer,
 };

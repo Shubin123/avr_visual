@@ -147,26 +147,21 @@ body {
   font-size: 10px;
 }
 
-.app-layout {
+/* Widgets live in a free-form, draggable/resizable grid (react-grid-layout)
+   instead of a fixed column layout, so the dashboard area itself just needs
+   to scroll if the grid grows taller than the viewport. */
+.dashboard-scroll {
   flex: 1;
-  display: grid;
-  grid-template-columns: 1.3fr 1fr 1fr 1fr;
-  gap: 10px;
-  padding: 10px;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.col {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
   min-height: 0;
   overflow-y: auto;
 }
 
-.col-editor {
-  min-height: 0;
+.dashboard-grid-container {
+  padding: 10px;
+}
+
+.grid-widget {
+  height: 100%;
 }
 
 .editor-container {
@@ -178,14 +173,17 @@ body {
 }
 
 .panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel-bg);
   overflow: hidden;
-  flex-shrink: 0;
 }
 
 .panel-title {
+  flex-shrink: 0;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -193,9 +191,17 @@ body {
   color: var(--text-dim);
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
+  cursor: grab;
+}
+
+.panel-title:active {
+  cursor: grabbing;
 }
 
 .panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
   padding: 8px 10px;
   font-family: var(--mono);
   font-size: 12px;

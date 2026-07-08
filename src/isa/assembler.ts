@@ -121,6 +121,7 @@ export function assemble(sourceText: string, mainFileName = 'main.asm'): Assembl
     const prelude = pre.expand('.include "m2560def.inc"', mainFileName, resolveBundledInclude);
     const body = pre.expand(sourceText, mainFileName, resolveBundledInclude);
     lines = [...prelude, ...body];
+    warnings.push(...pre.messages);
   } catch (e) {
     const err = e as { message: string; file?: string; line?: number };
     errors.push({ file: err.file ?? mainFileName, line: err.line ?? 0, message: err.message });
@@ -142,7 +143,7 @@ export function assemble(sourceText: string, mainFileName = 'main.asm'): Assembl
     let dseg = SRAM_START;
     let eseg = 0;
     let segment: Segment = 'CSEG';
-    const condStack: { parentActive: boolean; taken: boolean }[] = [];
+    const condStack: { parentActive: boolean; taken: boolean; anyTaken: boolean }[] = [];
     const isActive = () => (condStack.length ? condStack[condStack.length - 1].taken : true);
     const currentCounter = () => (segment === 'CSEG' ? cseg : segment === 'DSEG' ? dseg : eseg);
     const ctx: EvalContext = {
@@ -163,17 +164,44 @@ export function assemble(sourceText: string, mainFileName = 'main.asm'): Assembl
         const dotMatch = /^\.(\w+)\s*(.*)$/.exec(trimmed);
         const directive = dotMatch ? dotMatch[1].toLowerCase() : null;
 
-        // .if/.else/.endif control whether we register anything for this line at all.
-        if (directive === 'if') {
+        // .if/.ifdef/.ifndef/.elif/.else/.endif control whether we register
+        // anything for this line at all. .ifdef/.ifndef test symbols against
+        // this pass's own running table (matching two-pass avra-style
+        // assemblers), so they're only reliable for symbols defined earlier
+        // in the same file (e.g. "use a default unless already .equ'd") — not
+        // for symbols defined later in the file. Pass 2 mirrors this same
+        // incremental replay (see its own `symbols2` map) so both passes
+        // agree on which branch is active at any given line.
+        if (directive === 'if' || directive === 'ifdef' || directive === 'ifndef') {
           const parentActive = isActive();
-          const cond = parentActive ? evalExpr(dotMatch![2]) !== 0 : false;
-          condStack.push({ parentActive, taken: parentActive && cond });
+          const test =
+            directive === 'if'
+              ? parentActive && evalExpr(dotMatch![2]) !== 0
+              : parentActive && symbols.has(dotMatch![2].trim().toUpperCase()) === (directive === 'ifdef');
+          condStack.push({ parentActive, taken: test, anyTaken: test });
+          continue;
+        }
+        if (directive === 'elif') {
+          if (!condStack.length) throw new AsmError('.elif without .if/.ifdef/.ifndef');
+          const frame = condStack[condStack.length - 1];
+          if (!frame.parentActive || frame.anyTaken) {
+            frame.taken = false;
+          } else {
+            const cond = evalExpr(dotMatch![2]) !== 0;
+            frame.taken = cond;
+            if (cond) frame.anyTaken = true;
+          }
           continue;
         }
         if (directive === 'else') {
           if (!condStack.length) throw new AsmError('.else without .if');
           const frame = condStack[condStack.length - 1];
-          frame.taken = frame.parentActive && !frame.taken;
+          if (!frame.parentActive || frame.anyTaken) {
+            frame.taken = false;
+          } else {
+            frame.taken = true;
+            frame.anyTaken = true;
+          }
           continue;
         }
         if (directive === 'endif') {
@@ -200,6 +228,7 @@ export function assemble(sourceText: string, mainFileName = 'main.asm'): Assembl
             case 'error':
               throw new AsmError(unquote(args.trim()));
             case 'warning':
+            case 'message':
               warnings.push({ file, line, message: args.trim() });
               continue;
             case 'cseg':
@@ -289,13 +318,21 @@ export function assemble(sourceText: string, mainFileName = 'main.asm'): Assembl
     let dseg = SRAM_START;
     let eseg = 0;
     let segment: Segment = 'CSEG';
-    const condStack: { parentActive: boolean; taken: boolean }[] = [];
+    const condStack: { parentActive: boolean; taken: boolean; anyTaken: boolean }[] = [];
     const isActive = () => (condStack.length ? condStack[condStack.length - 1].taken : true);
     const currentCounter = () => (segment === 'CSEG' ? cseg : segment === 'DSEG' ? dseg : eseg);
+    // .equ/.set/.def are re-applied here (not just inherited from pass 1's
+    // final map) because .set is meant to be reassignable mid-file — e.g.
+    // examples/lcd/lcd.asm's PARAM_OFFSET is .set to a different value at
+    // the top of each subroutine, and every reference to it must resolve to
+    // whatever value was current at that point in the file, not the file's
+    // last assignment. Labels don't need this treatment (single-assignment,
+    // forward-referenceable), so they're seeded once from pass 1's results.
+    const symbols2 = new Map(symbols);
     const ctx: EvalContext = {
       resolveSymbol(name) {
         if (name.toUpperCase() === 'PC') return currentCounter();
-        const entry = symbols.get(name.toUpperCase());
+        const entry = symbols2.get(name.toUpperCase());
         if (!entry) throw new ExprError(`undefined symbol '${name}'`);
         return entry.value;
       },
@@ -316,16 +353,37 @@ export function assemble(sourceText: string, mainFileName = 'main.asm'): Assembl
       const directive = dotMatch ? dotMatch[1].toLowerCase() : null;
 
       try {
-        if (directive === 'if') {
+        if (directive === 'if' || directive === 'ifdef' || directive === 'ifndef') {
           const parentActive = isActive();
-          const cond = parentActive ? evalExpr(dotMatch![2]) !== 0 : false;
-          condStack.push({ parentActive, taken: parentActive && cond });
+          const test =
+            directive === 'if'
+              ? parentActive && evalExpr(dotMatch![2]) !== 0
+              : parentActive && symbols2.has(dotMatch![2].trim().toUpperCase()) === (directive === 'ifdef');
+          condStack.push({ parentActive, taken: test, anyTaken: test });
+          continue;
+        }
+        if (directive === 'elif') {
+          if (condStack.length) {
+            const frame = condStack[condStack.length - 1];
+            if (!frame.parentActive || frame.anyTaken) {
+              frame.taken = false;
+            } else {
+              const cond = evalExpr(dotMatch![2]) !== 0;
+              frame.taken = cond;
+              if (cond) frame.anyTaken = true;
+            }
+          }
           continue;
         }
         if (directive === 'else') {
           if (condStack.length) {
             const frame = condStack[condStack.length - 1];
-            frame.taken = frame.parentActive && !frame.taken;
+            if (!frame.parentActive || frame.anyTaken) {
+              frame.taken = false;
+            } else {
+              frame.taken = true;
+              frame.anyTaken = true;
+            }
           }
           continue;
         }
@@ -383,8 +441,26 @@ export function assemble(sourceText: string, mainFileName = 'main.asm'): Assembl
               }
               continue;
             }
+            // .equ/.set/.def/.undef are replayed against symbols2 (not just
+            // inherited from pass 1) so mid-file redefinitions — .set is
+            // explicitly meant to be reassignable — resolve to whichever
+            // value was current at each point, matching pass 1's behavior.
+            case 'equ':
+            case 'set': {
+              const m = /^(\w+)\s*=\s*(.+)$/.exec(args.trim());
+              if (m) symbols2.set(m[1].toUpperCase(), { kind: 'equ', value: evalExpr(m[2]) });
+              continue;
+            }
+            case 'def': {
+              const m = /^(\w+)\s*=\s*[rR](\d+)$/.exec(args.trim());
+              if (m) symbols2.set(m[1].toUpperCase(), { kind: 'def', value: parseInt(m[2], 10) });
+              continue;
+            }
+            case 'undef':
+              symbols2.delete(args.trim().toUpperCase());
+              continue;
             default:
-              continue; // equ/set/def/undef/device/list/... already fully handled in pass 1
+              continue; // device/list/nolist/listmac/exit/macro/endmacro/... no-ops, or already handled above
           }
         }
 
@@ -505,6 +581,16 @@ const REG_RE = /^[rR](\d{1,2})$/;
 const BARE_POINTER_REG: Record<string, number> = { X: 26, Y: 28, Z: 30 };
 
 function resolveRegister(token: string, symbols: Map<string, SymbolEntry>): number | null {
+  // "high:low" register-pair syntax (e.g. `sbiw YH:YL, 1`, equivalently `r29:r28`)
+  // resolves to the pair's low register — that's what ADIW/SBIW's Rd field encodes.
+  const pairMatch = /^(\S+)\s*:\s*(\S+)$/.exec(token);
+  if (pairMatch) {
+    const hi = resolveRegister(pairMatch[1], symbols);
+    const lo = resolveRegister(pairMatch[2], symbols);
+    if (hi === null || lo === null) return null;
+    if (hi !== lo + 1) throw new AsmError(`register pair '${token}' is not two adjacent registers (high:low)`);
+    return lo;
+  }
   const entry = symbols.get(token.toUpperCase());
   if (entry && entry.kind === 'def') return entry.value;
   const bare = BARE_POINTER_REG[token.toUpperCase()];

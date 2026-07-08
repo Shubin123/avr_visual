@@ -1,12 +1,5 @@
 import { Toolbar } from './ui/Toolbar';
-import { Editor } from './ui/Editor';
-import { ErrorsPanel } from './ui/ErrorsPanel';
-import { RegisterTable } from './ui/RegisterTable';
-import { SregView } from './ui/SregView';
-import { StackView } from './ui/StackView';
-import { MemoryMap } from './ui/MemoryMap';
-import { Disassembly } from './ui/Disassembly';
-import { HardwarePanel } from './ui/HardwarePanel';
+import { DashboardGrid } from './ui/DashboardGrid';
 
 function App() {
   return (
@@ -16,24 +9,7 @@ function App() {
         <span className="app-subtitle">ATmega2560 assembler + visual debugger</span>
       </header>
       <Toolbar />
-      <ErrorsPanel />
-      <div className="app-layout">
-        <div className="col col-editor">
-          <Editor />
-        </div>
-        <div className="col col-debug">
-          <SregView />
-          <RegisterTable />
-          <StackView />
-        </div>
-        <div className="col col-mem">
-          <Disassembly />
-          <MemoryMap />
-        </div>
-        <div className="col col-hw">
-          <HardwarePanel />
-        </div>
-      </div>
+      <DashboardGrid />
     </div>
   );
 }

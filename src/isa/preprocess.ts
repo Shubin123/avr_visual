@@ -1,7 +1,9 @@
-// C-style preprocessor pass (#define / #ifdef / #ifndef / #else / #endif /
-// #pragma / #undef) plus recursive `.include "file"` expansion. Runs before
-// the main two-pass assembler; avrasm2/avra source (and m2560def.inc, which
-// uses #ifndef include guards) depends on exactly this behavior.
+// C-style preprocessor pass (#define / #ifdef / #ifndef / #if / #elif /
+// #else / #endif / #pragma / #undef / #error / #message) plus recursive
+// `.include "file"` expansion. Runs before the main two-pass assembler;
+// avrasm2/avra source (and m2560def.inc, which uses #ifndef include guards)
+// depends on exactly this behavior.
+import { evaluate, ExprError, type EvalContext } from './expr';
 
 export class PreprocessError extends Error {
   file: string;
@@ -22,6 +24,8 @@ export interface LogicalLine {
 interface CondFrame {
   parentActive: boolean;
   taken: boolean;
+  /** Whether any branch of this #if/#ifdef/#ifndef ... #elif ... #else chain has fired yet. */
+  anyTaken: boolean;
 }
 
 export interface ResolveInclude {
@@ -90,6 +94,41 @@ function substituteWord(line: string, name: string, value: string): string {
 
 export class Preprocessor {
   defines = new Map<string, string>();
+  /** #message lines collected as they're encountered (informational only). */
+  messages: { file: string; line: number; message: string }[] = [];
+
+  private substitute(text: string): string {
+    let substituted = text;
+    if (this.defines.size > 0 && substituted.trim().length > 0) {
+      for (let iter = 0; iter < 8; iter++) {
+        let changed = false;
+        for (const [name, value] of this.defines) {
+          if (value.length === 0) continue; // value-less defines (include guards) aren't substituted
+          const next = substituteWord(substituted, name, value);
+          if (next !== substituted) {
+            substituted = next;
+            changed = true;
+          }
+        }
+        if (!changed) break;
+      }
+    }
+    return substituted;
+  }
+
+  /** Evaluates a #if/#elif condition against currently-#define'd symbols only. */
+  private evalCondition(expr: string, filename: string, lineNo: number): boolean {
+    const ctx: EvalContext = {
+      resolveSymbol(name) {
+        throw new ExprError(`undefined preprocessor symbol '${name}' (only #define'd names are visible to #if/#elif)`);
+      },
+    };
+    try {
+      return evaluate(this.substitute(expr), ctx) !== 0;
+    } catch (e) {
+      throw new PreprocessError(`#if/#elif: ${(e as Error).message}`, filename, lineNo + 1);
+    }
+  }
 
   expand(source: string, filename: string, resolveInclude: ResolveInclude, depth = 0): LogicalLine[] {
     if (depth > MAX_INCLUDE_DEPTH) {
@@ -106,33 +145,63 @@ export class Preprocessor {
 
       const ifndef = /^#\s*ifndef\s+(\w+)/i.exec(trimmed);
       const ifdef = ifndef ? null : /^#\s*ifdef\s+(\w+)/i.exec(trimmed);
+      const ifExpr = ifndef || ifdef ? null : /^#\s*if\s+(.+)$/i.exec(trimmed);
+      const elifExpr = /^#\s*elif\s+(.+)$/i.exec(trimmed);
       const elseDir = /^#\s*else\b/i.test(trimmed);
       const endifDir = /^#\s*endif\b/i.test(trimmed);
       const defineDir = /^#\s*define\s+(\w+)\s*(.*)$/i.exec(trimmed);
       const undefDir = /^#\s*undef\s+(\w+)/i.exec(trimmed);
       const pragmaDir = /^#\s*pragma\b/i.test(trimmed);
+      const errorDir = /^#\s*error\b\s*(.*)$/i.exec(trimmed);
+      const messageDir = /^#\s*message\b\s*(.*)$/i.exec(trimmed);
 
-      if (ifndef || ifdef) {
-        const name = (ifndef ?? ifdef)![1];
+      if (ifndef || ifdef || ifExpr) {
         const parentActive = isActive();
-        const test = ifndef ? !this.defines.has(name) : this.defines.has(name);
-        stack.push({ parentActive, taken: parentActive && test });
+        const test = ifndef
+          ? !this.defines.has(ifndef[1])
+          : ifdef
+            ? this.defines.has(ifdef[1])
+            : parentActive && this.evalCondition(ifExpr![1], filename, lineNo);
+        const takenNow = parentActive && test;
+        stack.push({ parentActive, taken: takenNow, anyTaken: takenNow });
+        continue;
+      }
+      if (elifExpr) {
+        if (!stack.length) throw new PreprocessError('#elif without matching #if/#ifdef/#ifndef', filename, lineNo + 1);
+        const frame = stack[stack.length - 1];
+        if (!frame.parentActive || frame.anyTaken) {
+          frame.taken = false;
+        } else {
+          const test = this.evalCondition(elifExpr[1], filename, lineNo);
+          frame.taken = test;
+          if (test) frame.anyTaken = true;
+        }
         continue;
       }
       if (elseDir) {
-        if (!stack.length) throw new PreprocessError('#else without matching #ifdef/#ifndef', filename, lineNo + 1);
+        if (!stack.length) throw new PreprocessError('#else without matching #if/#ifdef/#ifndef', filename, lineNo + 1);
         const frame = stack[stack.length - 1];
-        frame.taken = frame.parentActive && !frame.taken;
+        if (!frame.parentActive || frame.anyTaken) {
+          frame.taken = false;
+        } else {
+          frame.taken = true;
+          frame.anyTaken = true;
+        }
         continue;
       }
       if (endifDir) {
-        if (!stack.length) throw new PreprocessError('#endif without matching #ifdef/#ifndef', filename, lineNo + 1);
+        if (!stack.length) throw new PreprocessError('#endif without matching #if/#ifdef/#ifndef', filename, lineNo + 1);
         stack.pop();
         continue;
       }
       if (!isActive()) continue;
 
       if (pragmaDir) continue;
+      if (errorDir) throw new PreprocessError(errorDir[1].trim() || '#error', filename, lineNo + 1);
+      if (messageDir) {
+        this.messages.push({ file: filename, line: lineNo + 1, message: messageDir[1].trim() });
+        continue;
+      }
       if (defineDir) {
         this.defines.set(defineDir[1], defineDir[2].trim());
         continue;
@@ -157,22 +226,7 @@ export class Preprocessor {
         continue;
       }
 
-      let substituted = raw;
-      if (this.defines.size > 0 && trimmed.length > 0) {
-        for (let iter = 0; iter < 8; iter++) {
-          let changed = false;
-          for (const [name, value] of this.defines) {
-            if (value.length === 0) continue; // value-less defines (include guards) aren't substituted
-            const next = substituteWord(substituted, name, value);
-            if (next !== substituted) {
-              substituted = next;
-              changed = true;
-            }
-          }
-          if (!changed) break;
-        }
-      }
-
+      const substituted = this.substitute(raw);
       out.push({ text: substituted, file: filename, line: lineNo + 1 });
     }
 

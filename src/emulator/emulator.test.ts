@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { PinState } from 'avr8js';
 import { assemble } from '../isa/assembler';
 import { Emulator } from './emulator';
+import { HD44780 } from './hd44780';
+import lcdHelloWorld from '../../examples/lcd/hello_world.asm?raw';
 
 describe('Emulator — assembled program driving real avr8js peripherals', () => {
   it('runs ldi/out and reflects the result on the real GPIO port', () => {
@@ -74,5 +76,33 @@ describe('Emulator — assembled program driving real avr8js peripherals', () =>
     expect(emu.ports.L.pinState(3)).toBe(PinState.Low);
     expect(emu.ports.L.pinState(1)).toBe(PinState.Low);
     expect(emu.ports.B.pinState(3)).toBe(PinState.Low);
+  });
+
+  it('assembles examples/lcd/hello_world.asm (multi-file .include) and prints to the LCD', () => {
+    // Regression coverage for two real bugs this exercised: (1) LDD/STD Y+q
+    // parameter passing across lcd.asm's push/call chain requires the exact
+    // stack layout math to be right, and (2) pass 2 must replay .equ/.set
+    // incrementally rather than reuse pass 1's final symbol snapshot — this
+    // driver's PARAM_OFFSET is .set to a different value at the top of each
+    // subroutine (5, 5, 4, 6, 4, 7), and every `ldd CREG, Y+1+(SP_OFFSET+
+    // PARAM_OFFSET)` must resolve against whichever value was current at
+    // that point in the file, not the file's last assignment.
+    const res = assemble(lcdHelloWorld, 'hello_world.asm');
+    expect(res.errors).toEqual([]);
+
+    const emu = new Emulator(res.program);
+    const lcd = new HD44780(emu.ports);
+    let stuckStreak = 0;
+    let lastPc = -1;
+    for (let i = 0; i < 5_000_000 && stuckStreak <= 5; i++) {
+      emu.step();
+      stuckStreak = emu.cpu.pc === lastPc ? stuckStreak + 1 : 0;
+      lastPc = emu.cpu.pc;
+    }
+
+    const row0 = Array.from(lcd.getDisplayState().characters.slice(0, 16))
+      .map((c) => String.fromCharCode(c))
+      .join('');
+    expect(row0).toBe('CSC 230         ');
   });
 });
