@@ -14,6 +14,18 @@ export const FLASHEND_WORDS = SFR.FLASHEND;
 export const E2END = SFR.E2END;
 export const SRAM_BYTES = RAMEND - SRAM_START + 1;
 
+// avr8js's CPU allocates `data = new Uint8Array(sramBytes + 0x100)` — it always
+// reserves exactly 0x100 bytes of low address space below where `sramBytes`
+// begins, regardless of the target chip. The real ATmega2560 reserves 0x200
+// bytes there (SRAM_START = 0x0200) before its 8KB of SRAM, which is why
+// RAMEND is 0x21ff. Passing SRAM_BYTES directly as avr8js's `sramBytes` would
+// therefore only allocate up to address 0x20ff — 256 bytes short of RAMEND —
+// so every program's initial `SP = RAMEND` sets the stack pointer outside the
+// emulator's backing array, and every push/call silently corrupts the stack.
+// Padding by the 0x100 gap between avr8js's assumption and the real chip's
+// SRAM_START makes the allocated array reach all the way to RAMEND.
+export const CPU_SRAM_BYTES = SRAM_BYTES + 0x100;
+
 /**
  * GPIO ports A-L (there is no PORTI on AVR to avoid confusion with the digit 1).
  * Only register addresses are modeled; external/pin-change interrupt wiring is

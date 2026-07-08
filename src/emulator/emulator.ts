@@ -1,7 +1,7 @@
 // Wraps avr8js's CPU core with the ATmega2560 peripheral set (GPIO ports A-L,
 // timers 0-5, ADC) and a small step/run/breakpoint API for the debugger UI.
 import { AVRADC, AVRIOPort, AVRTimer, CPU, avrInstruction } from 'avr8js';
-import { allTimerConfigs, mega2560AdcConfig, mega2560Ports, RAMEND } from '../mega2560/device';
+import { allTimerConfigs, CPU_SRAM_BYTES, mega2560AdcConfig, mega2560Ports, RAMEND } from '../mega2560/device';
 
 export type LcdKeypadButton = 'none' | 'right' | 'up' | 'down' | 'left' | 'select';
 
@@ -31,7 +31,7 @@ export class Emulator {
   }
 
   private initPeripherals() {
-    this.cpu = new CPU(this.program);
+    this.cpu = new CPU(this.program, CPU_SRAM_BYTES);
     this.cpu.SP = RAMEND;
     this.ports = {};
     for (const [name, cfg] of Object.entries(mega2560Ports)) {

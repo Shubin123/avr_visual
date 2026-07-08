@@ -5,8 +5,10 @@ import { HD44780, type LcdDisplayState } from '../emulator/hd44780';
 import type { LcdKeypadButton } from '../emulator/emulator';
 import a2Signaling from '../../examples/a2-signaling.asm?raw';
 import multiTimer from '../../examples/multi_timer.asm?raw';
+import ledCycleDemo from '../../examples/led-cycle-demo.asm?raw';
 
 export const EXAMPLES: Record<string, string> = {
+  'led-cycle-demo.asm': ledCycleDemo,
   'a2-signaling.asm': a2Signaling,
   'multi_timer.asm': multiTimer,
 };
@@ -57,7 +59,7 @@ function stopLoop() {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  source: EXAMPLES['a2-signaling.asm'],
+  source: EXAMPLES['led-cycle-demo.asm'],
   assembleResult: null,
   emulator: null,
   lcd: null,
