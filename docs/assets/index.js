@@ -9649,454 +9649,409 @@ lcd_after:\r
 \r
 ; ***\r
 ; End of Data Memory Allocation\r
-`,"lcddefs.inc":`; ***\r
-; HD44780 LCD Driver for ATmega2560.\r
-; (DFRobot LCD Keypad Shield v1.1, Arduino Mega2560)\r
-;\r
-; Title: 		LCDdefs.inc\r
-; Description: 	Conditional Assembly, Constant Definitions\r
-; Author: 		Keegan van der Laag (jkvander@uvic.ca)\r
-; Updated:		23 February 2015\r
-\r
-; ---\r
-;\r
-; Some code shamelessly adapted from the C implementation of an HD44780\r
-; driver by Peter Dannegger, posted to the AVR Freaks forum. The original\r
-; driver is available here:\r
-;\r
-; http://www.avrfreaks.net/forum/tutc-lcd-tutorial-1001?name=PNphpBB2&file=viewtopic&t=102296\r
-\r
-\r
-; Throws a warning if LCD_LIBONLY is not set before the #include in the program\r
-; using the driver. If LCD_LIBONLY is not set, the default program code for setup,\r
-; initialization, and main program loop will be assembled.\r
-#ifndef LCD_LIBONLY\r
-#message "LCD Driver loaded, LCD_LIBONLY not set. Running default program code."\r
-#endif\r
-\r
-; Delay times for LCD commands. These are fairly conservative, but may need to be\r
-; adjusted for cheap HD44780 compatible controllers, or if you're implementing\r
-; this driver in antarctica. When in doubt, refer to the data sheet for your LCD\r
-; module.\r
-.equ LCD_DAT		=	50		; Execute time in microseconds for data commands\r
-.equ LCD_ENA		=	1		; Execute time in microseconds for clock pulse\r
-.equ LCD_CLEAR		=	2		; Execute time for longer commands in ms\r
-\r
-\r
-; Set the bit-width of the stack pointer for your processor.\r
-; This determines how many bytes some subroutines will pop off the stack\r
-; to preserve return addresses.\r
-; You know, I don't actually know if other MCUs have wider SP registers.\r
-; This kind of just assumes that they don't. I guess we'll find out pretty\r
-; quick.\r
-.if 	RAMEND <	0x100\r
-.equ	SP_OFFSET = 2\r
-.else\r
-.equ 	SP_OFFSET = 3\r
-.endif\r
-\r
-\r
-; ***\r
-; Register definitions used in this module.\r
-\r
-.def CREG	=	R18					; Command or data register used in routines\r
-.def DREG	=	R19					; Delay values passed to dly_ms and dly_us\r
-.def TEMP	=	R16					; Mnemonics for temporary values\r
-.def TEMP2	=	R17\r
-; ***\r
-; End of Driver Register Definitions\r
-\r
-\r
-; ***\r
-; Exception Handling\r
-;\r
-; Handle cases where some things are defined, but not others.\r
-#ifdef LCD_SIZE\r
-	#ifndef LCD_ROW\r
-		#error "LCD_SIZE defined, LCD_ROW not set."\r
-	#elif (LCD_ROW > 4) | (LCD_ROW < 1) | (LCD_ROW == 3)\r
-		#error "LCD_ROW out of range. (Should be 1, 2, or 4.)"\r
-	#endif\r
-\r
-	#ifndef LCD_COLUMN\r
-		#error "LCD_SIZE defined, LCD_COLUMN not set."\r
-\r
-	#elif LCD_ROW == 1\r
-		#if !(LCD_COLUMN == 8 | LCD_COLUMN == 16 | LCD_COLUMN == 20 | LCD_COLUMN == 40)\r
-			#error "LCD_COLUMN not valid for given LCD_ROW. (Must be 8, 16, 20, or 40 for LCD_ROW = 1)"\r
-		#endif\r
-	#elif LCD_ROW == 2\r
-		#if !(LCD_COLUMN == 8 | LCD_COLUMN == 12 | LCD_COLUMN == 16 | LCD_COLUMN == 20 | LCD_COLUMN == 24 | LCD_COLUMN == 40)\r
-			#error "LCD_COLUMN not valid for given LCD_ROW. (Must be 8, 12, 16, 20, 24, or 40 for LCD_ROW = 2)"\r
-		#endif\r
-	#elif LCD_ROW == 4\r
-		#if !(LCD_COLUMN == 16 | LCD_COLUMN == 20)\r
-			#error "LCD_COLUMN not valid for given LCD_ROW. (Must be 16, or 20 for LCD_ROW = 4)"\r
-		#endif\r
-\r
-	#endif\r
-#endif\r
-\r
-#ifdef LCD_DISPLAY_SET\r
-	#ifndef LCD_SHOW_CURSOR\r
-		#error "LCD_DISPLAY_SET defined, LCD_SHOW_CURSOR not set."\r
-	#endif\r
-	#ifndef LCD_BLINK_CURSOR\r
-		#error "LCD_DISPLAY_SET defined, LCD_BLINK_CURSOR not set."\r
-	#endif\r
-	#ifndef LCD_DISPLAY_ON\r
-		#error "LCD_DISPLAY_SET defined, LCD_DISPLAY_ON not set."\r
-	#endif\r
-#endif\r
-\r
-#ifdef LCD_INTERFACE_SET\r
-	#ifndef LCD_INTERFACE_WIDTH\r
-		#error "LCD_INTERFACE_SET defined, LCD_INTERFACE_WIDTH not set."\r
-	#endif\r
-	#ifndef LCD_LINE_COUNT\r
-		#error "LCD_INTERFACE_SET defined, LCD_LINE_COUNT not set."\r
-	#endif\r
-	#ifndef LCD_FONT_SIZE\r
-		#error "LCD_INTERFACE_SET defined, LCD_FONT_SIZE not set."\r
-	#endif\r
-#endif\r
-\r
-#ifdef LCD_CURSOR_SET\r
-	#ifndef LCD_CURSOR_DIR\r
-		#error "LCD_CURSOR_SET defined, LCD_CURSOR_DIR not set."\r
-	#endif\r
-	#ifndef LCD_DISPLAY_SHIFT\r
-		#error "LCD_CURSOR_SET defined, LCD_DISPLAY_SHIFT not set."\r
-	#endif\r
-#endif\r
-\r
-#ifdef LCD_SHIFT_SET\r
-	#ifndef LCD_SHIFT_DIR\r
-		#error "LCD_MOVE_SHIFT defined, LCD_SHIFT_DIR not set."\r
-	#endif\r
-	#ifndef LCD_MOVE_SHIFT\r
-		#error "LCD_SHIFT_SET defined, LCD_MOVE_SHIFT not set."\r
-	#endif\r
-#endif\r
-\r
-.ifdef LCD_INTERFACE_PORTS\r
-	.ifndef LCD_PORT_D4\r
-		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_D4 not set."\r
-	.elif LCD_PORT_D4 > IOEND\r
-		.error "LCD_PORT_D4 out of range. (Must be inside I/O Space)" \r
-	.endif\r
-	.ifndef LCD_PORT_D5\r
-		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_D5 not set."\r
-	.elif LCD_PORT_D5 > IOEND\r
-		.error "LCD_PORT_D5 out of range. (Must be inside I/O Space)"\r
-	.endif\r
-	.ifndef LCD_PORT_D6\r
-		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_D6 not set."\r
-	.elif LCD_PORT_D6 > IOEND\r
-		.error "LCD_PORT_D6 out of range. (Must be inside I/O Space)"\r
-	.endif\r
-	.ifndef LCD_PORT_D7\r
-		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_D7 not set."\r
-	.elif LCD_PORT_D7 > IOEND\r
-		.error "LCD_PORT_D7 out of range. (Must be inside I/O Space)"\r
-	.endif\r
-	.ifndef LCD_PORT_RS\r
-		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_RS not set."\r
-	.elif LCD_PORT_RS > IOEND\r
-		.error "LCD_PORT_RS out of range. (Must be inside I/O Space)"\r
-	.endif\r
-	.ifndef LCD_PORT_ENA\r
-		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_ENA not set."\r
-	.elif LCD_PORT_ENA > IOEND\r
-		.error "LCD_PORT_ENA out of range. (Must be inside I/O Space)"\r
-	.endif\r
-\r
-	.ifndef PIN_D4\r
-		.error "LCD_INTERFACE_PORTS defined, PIN_D4 not set."\r
-	.elif PIN_D4 > 7\r
-		.error "PIN_D4 out of range. (Must be between 0 and 7.)\r
-	.endif\r
-	.ifndef PIN_D5\r
-		.error "LCD_INTERFACE_PORTS defined, PIN_D5 not set."\r
-	.elif PIN_D5 > 7\r
-		.error "PIN_D5 out of range. (Must be between 0 and 7.)\r
-	.endif\r
-	.ifndef PIN_D6\r
-		.error "LCD_INTERFACE_PORTS defined, PIN_D6 not set."\r
-	.elif PIN_D6 > 7\r
-		.error "PIN_D6 out of range. (Must be between 0 and 7.)\r
-	.endif\r
-	.ifndef PIN_D7\r
-		.error "LCD_INTERFACE_PORTS defined, PIN_D7 not set."\r
-	.elif PIN_D7 > 7\r
-		.error "PIN_D7 out of range. (Must be between 0 and 7.)\r
-	.endif\r
-	.ifndef PIN_RS\r
-		.error "LCD_INTERFACE_PORTS defined, PIN_RS not set."\r
-	.elif PIN_RS > 7\r
-		.error "PIN_RS out of range. (Must be between 0 and 7.)\r
-	.endif\r
-	.ifndef PIN_ENA\r
-		.error "LCD_INTERFACE_PORTS defined, PIN_ENA not set."\r
-	.elif PIN_ENA > 7\r
-		.error "PIN_ENA out of range. (Must be between 0 and 7.)\r
-	.endif\r
-\r
-.endif\r
-\r
-\r
-\r
-; Definitions of constants for different LCD sizes.\r
-#if (LCD_ROW == 1 & LCD_COLUMN == 8)\r
-#define LCD_LINE1       0x80\r
-#endif\r
-\r
-#if (LCD_ROW == 1 & LCD_COLUMN == 16 )\r
-#define LCD_LINE1       0x80\r
-#endif\r
-\r
-#if (LCD_ROW == 1 & LCD_COLUMN == 20 )\r
-#define LCD_LINE1       0x80\r
-#endif\r
-\r
-#if (LCD_ROW == 1 & LCD_COLUMN == 40 )\r
-#define LCD_LINE1       0x80\r
-#endif\r
-\r
-#if (LCD_ROW == 2 & LCD_COLUMN == 8 )\r
-#define LCD_LINE1       0x80\r
-#define LCD_LINE2       (0x80 + 0x40)\r
-#endif\r
-\r
-#if (LCD_ROW == 2 & LCD_COLUMN == 12 )\r
-#define LCD_LINE1       0x80\r
-#define LCD_LINE2       (0x80 + 0x40)\r
-#endif\r
-\r
-#if (LCD_ROW == 2 & LCD_COLUMN == 16 )\r
-#define LCD_LINE1       0x80\r
-#define LCD_LINE2       (0x80 + 0x40)\r
-#endif\r
-\r
-#if (LCD_ROW == 2 & LCD_COLUMN == 20 )\r
-#define LCD_LINE1       0x80\r
-#define LCD_LINE2       (0x80 + 0x40)\r
-#endif\r
-\r
-#if (LCD_ROW == 2 & LCD_COLUMN == 24 )\r
-#define LCD_LINE1       0x80\r
-#define LCD_LINE2       (0x80 + 0x40)\r
-#endif\r
-\r
-#if (LCD_ROW == 2 & LCD_COLUMN == 40 )\r
-#define LCD_LINE1       0x80\r
-#define LCD_LINE2       (0x80 + 0x40)\r
-#endif\r
-\r
-#if (LCD_ROW == 4 & LCD_COLUMN == 16 )\r
-#define LCD_LINE1       0x80\r
-#define LCD_LINE2       (0x80 + 0x40)\r
-#define LCD_LINE3       (0x80 + 0x10)\r
-#define LCD_LINE4       (0x80 + 0x50)\r
-#endif\r
-\r
-#if (LCD_ROW == 4 & LCD_COLUMN == 20 )\r
-#define LCD_LINE1       0x80\r
-#define LCD_LINE2       (0x80 + 0x40)\r
-#define LCD_LINE3       (0x80 + 0x14)\r
-#define LCD_LINE4       (0x80 + 0x54)\r
-#endif\r
-\r
-; Maximum length of a null-terminated string that fills the LCD completely.\r
-; (Good for reserving memory for the LCD contents.)\r
-#define lcd_length      (LCD_ROW * LCD_COLUMN) + 1\r
-\r
-; Some constant definitions for Hitachi HD44780 Command instructions.\r
-; Can be used with lcd_cmd by pushing them onto the stack before calling.\r
-; For more details about the HD44780 instruction set and instruction format,\r
-; see the data sheet for the HD44780 from Hitachi.\r
-#define LCD_CMD_CLR			0x01\r
-#define LCD_CMD_HOM			0x02\r
-#define LCD_CMD_EMS     	0x04\r
-#define LCD_CMD_DSP     	0x08\r
-#define LCD_CMD_SHF     	0x10\r
-#define LCD_CMD_FNC     	0x20\r
-#define LCD_CMD_CGR     	0x40\r
-#define LCD_CMD_DDR     	0x80\r
-#define LCD_CMD_INI     	LCD_CMD_FNC + 0x10\r
-\r
-; Definitions of commands specific to display settings from driver.\r
-; These are used primarily in lcd_init\r
-#define LCD_CMD_FUNCTION_SET	LCD_CMD_FNC + (LCD_INTERFACE_WIDTH<<4) + (LCD_LINE_COUNT<<3) + (LCD_FONT_SIZE<<2)\r
-#define LCD_CMD_DISPLAY_MODE  LCD_CMD_DSP + (LCD_DISPLAY_ON<<2) + (LCD_SHOW_CURSOR<<1) + LCD_BLINK_CURSOR\r
-#define LCD_CMD_ENTRY_MODE    LCD_CMD_EMS + (LCD_CURSOR_DIR<<1) + (LCD_DISPLAY_SHIFT)\r
-#define LCD_CMD_SHIFT_DISPLAY LCD_CMD_SHF + (LCD_MOVE_SHIFT<<3) + (LCD_SHIFT_DIR)\r
-\r
-\r
-; ***\r
-; Port and Pin symbols for LCD_INTERFACE_PORTS. Uses symbols defined in\r
-; the Atmel partdef file for your MCU.\r
-\r
-; Port/Pin Labels for D4\r
-.if (LCD_PORT_D4 < 0x100)\r
-	.equ PORT_D4 = (LCD_PORT_D4) + 0x20\r
-	.equ PINS_D4 = (LCD_PORT_D4 - 2) + 0x20\r
-	.equ DDR_D4  = (LCD_PORT_D4 - 1) + 0x20\r
-.else\r
-	.equ PORT_D4 = LCD_PORT_D4\r
-	.equ PINS_D4 = LCD_PORT_D4 - 2\r
-	.equ DDR_D4  = LCD_PORT_D4 - 1\r
-.endif\r
-\r
-; Port/Pin Labels for D5\r
-.if (LCD_PORT_D5 < 0x100)\r
-	.equ PORT_D5 = (LCD_PORT_D5) + 0x20\r
-	.equ PINS_D5 = (LCD_PORT_D5 - 2) + 0x20\r
-	.equ DDR_D5  = (LCD_PORT_D5 - 1) + 0x20\r
-.else\r
-	.equ PORT_D5 = LCD_PORT_D5\r
-	.equ PINS_D5 = LCD_PORT_D5 - 2\r
-	.equ DDR_D5  = LCD_PORT_D5 - 1\r
-.endif\r
-\r
-; Port/Pin Labels for D6\r
-.if (LCD_PORT_D6 < 0x100)\r
-	.equ PORT_D6 = (LCD_PORT_D6) + 0x20\r
-	.equ PINS_D6 = (LCD_PORT_D6 - 2) + 0x20\r
-	.equ DDR_D6  = (LCD_PORT_D6 - 1) + 0x20\r
-.else\r
-	.equ PORT_D6 = LCD_PORT_D6\r
-	.equ PINS_D6 = LCD_PORT_D6 - 2\r
-	.equ DDR_D6  = LCD_PORT_D6 - 1\r
-.endif\r
-\r
-; Port/Pin Labels for D7\r
-.if (LCD_PORT_D7 < 0x100)\r
-	.equ PORT_D7 = (LCD_PORT_D7) + 0x20\r
-	.equ PINS_D7 = (LCD_PORT_D7 - 2) + 0x20\r
-	.equ DDR_D7  = (LCD_PORT_D7 - 1) + 0x20\r
-.else\r
-	.equ PORT_D7 = LCD_PORT_D7\r
-	.equ PINS_D7 = LCD_PORT_D7 - 2\r
-	.equ DDR_D7  = LCD_PORT_D7 - 1\r
-.endif\r
-\r
-; Port/Pin Labels for RS\r
-.if (LCD_PORT_RS < 0x100)\r
-	.equ PORT_RS = (LCD_PORT_RS) + 0x20\r
-	.equ PINS_RS = (LCD_PORT_RS - 2) + 0x20\r
-	.equ DDR_RS  = (LCD_PORT_RS - 1) + 0x20\r
-.else\r
-	.equ PORT_RS = LCD_PORT_RS\r
-	.equ PINS_RS = LCD_PORT_RS - 2\r
-	.equ DDR_RS  = LCD_PORT_RS - 1\r
-.endif\r
-\r
-; Port/Pin Labels for ENA\r
-.if (LCD_PORT_ENA < 0x100)\r
-	.equ PORT_ENA = (LCD_PORT_ENA) + 0x20\r
-	.equ PINS_ENA = (LCD_PORT_ENA - 2) + 0x20\r
-	.equ DDR_ENA  = (LCD_PORT_ENA - 1) + 0x20\r
-.else\r
-	.equ PORT_ENA = LCD_PORT_ENA\r
-	.equ PINS_ENA = LCD_PORT_ENA - 2\r
-	.equ DDR_ENA  = LCD_PORT_ENA - 1\r
-.endif\r
-`};function Ti(e){return wi[e.trim().toLowerCase().replace(/^["']|["']$/g,``)]??null}var Ei=class extends Error{};function I(e,t){let n=e.replace(/\s+/g,``);if(n.length!==16)throw new Ei(`Internal error: bad opcode pattern "${e}"`);let r={};for(let e of n)e!==`0`&&e!==`1`&&(r[e]=(r[e]||0)+1);let i={},a=0;for(let o=0;o<16;o++){let s=n[o],c;if(s===`0`||s===`1`)c=+(s===`1`);else{let n=t[s];if(n===void 0)throw new Ei(`Internal error: missing field '${s}' for pattern "${e}"`);let a=i[s]||0;c=n>>>r[s]-1-a&1,i[s]=a+1}a=a<<1|c}return a>>>0}function L(e,t,n,r,i){if(!Number.isInteger(t)||t<n||t>r)throw new Ei(`${i}: ${e}=${t} out of range [${n},${r}]`)}function Di(e,t,n){if(!e||e.kind!==`reg`)throw new Ei(`${t}: expected register for ${n}`);return e.n}function Oi(e,t,n){if(!e||e.kind!==`imm`)throw new Ei(`${t}: expected number for ${n}`);return e.n}function ki(e,t,n){if(e.length!==t)throw new Ei(`${n}: expected ${t} operand(s), got ${e.length}`)}function Ai(e,t){if(e===24)return 0;if(e===26)return 1;if(e===28)return 2;if(e===30)return 3;throw new Ei(`${t}: register pair must be r24/r26/r28/r30 (got r${e})`)}function ji(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rd`),i=Di(n[1],t,`Rr`);return L(`Rd`,r,0,31,t),L(`Rr`,i,0,31,t),[I(e,{d:r,r:i})]}}function Mi(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rd`),i=Di(n[1],t,`Rr`);return L(`Rd`,r,16,31,t),L(`Rr`,i,16,31,t),[I(e,{d:r-16,r:i-16})]}}function Ni(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rd`),i=Di(n[1],t,`Rr`);return L(`Rd`,r,16,23,t),L(`Rr`,i,16,23,t),[I(e,{d:r-16,r:i-16})]}}function Pi(e,t,n=!1){return r=>{ki(r,2,t);let i=Di(r[0],t,`Rd`),a=Oi(r[1],t,`K`);return L(`Rd`,i,16,31,t),L(`K`,a,0,255,t),n&&(a=255-a),[I(e,{d:i-16,K:a})]}}function Fi(e,t){return n=>{ki(n,1,t);let r=Di(n[0],t,`Rd`);return L(`Rd`,r,0,31,t),[I(e,{d:r})]}}function Ii(e,t){return n=>{ki(n,1,t);let r=Di(n[0],t,`Rd`);return L(`Rd`,r,16,31,t),[I(e,{d:r-16})]}}function Li(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rd`),i=Oi(n[1],t,`b`);return L(`Rd`,r,0,31,t),L(`b`,i,0,7,t),[I(e,{d:r,b:i})]}}function Ri(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rr`),i=Oi(n[1],t,`b`);return L(`Rr`,r,0,31,t),L(`b`,i,0,7,t),[I(e,{r,b:i})]}}function zi(e,t){return n=>{ki(n,2,t);let r=Oi(n[0],t,`A`),i=Oi(n[1],t,`b`);return L(`A`,r,0,31,t),L(`b`,i,0,7,t),[I(e,{A:r,b:i})]}}function Bi(e,t){return n=>(ki(n,0,t),[I(e,{})])}function Vi(e,t){return n=>{ki(n,1,t);let r=Oi(n[0],t,`s`);return L(`s`,r,0,7,t),[I(e,{s:r})]}}function Hi(e,t,n){return r=>{ki(r,1,n);let i=Oi(r[0],n,`k`);return L(`k`,i,-64,63,n),[I(e,{k:i&127,s:t})]}}function Ui(e,t){return n=>{ki(n,2,t);let r=Oi(n[0],t,`s`),i=Oi(n[1],t,`k`);return L(`s`,r,0,7,t),L(`k`,i,-64,63,t),[I(e,{k:i&127,s:r})]}}function Wi(e,t){return n=>{ki(n,1,t);let r=Oi(n[0],t,`k`);return L(`k`,r,-2048,2047,t),[I(e,{k:r&4095})]}}function Gi(e,t){return n=>{ki(n,1,t);let r=Oi(n[0],t,`k`);return L(`k`,r,0,4194303,t),[I(e,{k:r>>>16&63}),r&65535]}}function Ki(e,t,n){let r=n===`reg-io`?`d`:`r`;return i=>{ki(i,2,t);let[a,o]=i,s=n===`reg-io`?Di(a,t,`Rd`):Di(o,t,`Rr`),c=Oi(n===`reg-io`?o:a,t,`A`);return L(`Rd/Rr`,s,0,31,t),L(`A`,c,0,63,t),[I(e,{[r]:s,A:c})]}}function qi(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rd`),i=Oi(n[1],t,`K`),a=Ai(r,t);return L(`K`,i,0,63,t),[I(e,{d:a,K:i})]}}function Ji(){let e=`MOVW`;return t=>{ki(t,2,e);let n=Di(t[0],e,`Rd`),r=Di(t[1],e,`Rr`);if(n%2!=0||n<0||n>30)throw new Ei(`${e}: Rd must be even, 0..30 (got r${n})`);if(r%2!=0||r<0||r>30)throw new Ei(`${e}: Rr must be even, 0..30 (got r${r})`);return[I(`0000 0001 dddd rrrr`,{d:n/2,r:r/2})]}}function Yi(e,t){return n=>{ki(n,2,e);let r=t===`load`?n[0]:n[1],i=t===`load`?n[1]:n[0],a=Di(r,e,`Rd/Rr`),o=Oi(i,e,`k`);return L(`Rd/Rr`,a,0,31,e),L(`k`,o,0,65535,e),[I(t===`load`?`1001 000d dddd 0000`:`1001 001d dddd 0000`,{d:a}),o&65535]}}function Xi(e,t){return n=>{ki(n,2,t);let r=n[0];if(r.kind!==`ptr`||r.base!==`Z`||r.mode!==`plain`)throw new Ei(`${t}: first operand must be Z`);let i=Di(n[1],t,`Rd`);return L(`Rd`,i,0,31,t),[I(e,{r:i})]}}function Zi(e,t){if(!e||e.kind!==`ptr`)throw new Ei(`${t}: expected pointer operand (X/Y/Z)`);return e}var Qi={"X,plain":{pattern:`1001 000d dddd 1100`},"X,postinc":{pattern:`1001 000d dddd 1101`},"X,predec":{pattern:`1001 000d dddd 1110`},"Y,plain":{pattern:`1000 000d dddd 1000`},"Y,postinc":{pattern:`1001 000d dddd 1001`},"Y,predec":{pattern:`1001 000d dddd 1010`},"Y,disp":{pattern:`10q0 qq0d dddd 1qqq`,needsQ:!0},"Z,plain":{pattern:`1000 000d dddd 0000`},"Z,postinc":{pattern:`1001 000d dddd 0001`},"Z,predec":{pattern:`1001 000d dddd 0010`},"Z,disp":{pattern:`10q0 qq0d dddd 0qqq`,needsQ:!0}};function $i(e){ki(e,2,`LD`);let t=Di(e[0],`LD`,`Rd`),n=Zi(e[1],`LD`);L(`Rd`,t,0,31,`LD`);let r=`${n.base},${n.mode}`,i=Qi[r];if(!i)throw new Ei(`LD: addressing mode ${r} is not valid`);let a={d:t};if(i.needsQ){let e=n.disp??0;L(`q`,e,0,63,`LD`),a.q=e}return[I(i.pattern,a)]}var ea={"X,plain":{pattern:`1001 001r rrrr 1100`},"X,postinc":{pattern:`1001 001r rrrr 1101`},"X,predec":{pattern:`1001 001r rrrr 1110`},"Y,plain":{pattern:`1000 001r rrrr 1000`},"Y,postinc":{pattern:`1001 001r rrrr 1001`},"Y,predec":{pattern:`1001 001r rrrr 1010`},"Y,disp":{pattern:`10q0 qq1r rrrr 1qqq`,needsQ:!0},"Z,plain":{pattern:`1000 001r rrrr 0000`},"Z,postinc":{pattern:`1001 001r rrrr 0001`},"Z,predec":{pattern:`1001 001r rrrr 0010`},"Z,disp":{pattern:`10q0 qq1r rrrr 0qqq`,needsQ:!0}};function ta(e){ki(e,2,`ST`);let t=Zi(e[0],`ST`),n=Di(e[1],`ST`,`Rr`);L(`Rr`,n,0,31,`ST`);let r=`${t.base},${t.mode}`,i=ea[r];if(!i)throw new Ei(`ST: addressing mode ${r} is not valid`);let a={r:n};if(i.needsQ){let e=t.disp??0;L(`q`,e,0,63,`ST`),a.q=e}return[I(i.pattern,a)]}function na(e){ki(e,2,`LDD`);let t=Di(e[0],`LDD`,`Rd`),n=Zi(e[1],`LDD`);if(L(`Rd`,t,0,31,`LDD`),n.mode!==`disp`||n.base!==`Y`&&n.base!==`Z`)throw new Ei(`LDD: expected Y+q or Z+q`);let r=Qi[`${n.base},disp`],i=n.disp??0;return L(`q`,i,0,63,`LDD`),[I(r.pattern,{d:t,q:i})]}function ra(e){ki(e,2,`STD`);let t=Zi(e[0],`STD`),n=Di(e[1],`STD`,`Rr`);if(L(`Rr`,n,0,31,`STD`),t.mode!==`disp`||t.base!==`Y`&&t.base!==`Z`)throw new Ei(`STD: expected Y+q or Z+q`);let r=ea[`${t.base},disp`],i=t.disp??0;return L(`q`,i,0,63,`STD`),[I(r.pattern,{r:n,q:i})]}function ia(e){if(e.length===0)return[I(`1001 0101 1100 1000`,{})];ki(e,2,`LPM`);let t=Di(e[0],`LPM`,`Rd`),n=Zi(e[1],`LPM`);if(L(`Rd`,t,0,31,`LPM`),n.base!==`Z`||n.mode!==`plain`&&n.mode!==`postinc`)throw new Ei(`LPM: expected Z or Z+`);return[I(n.mode===`plain`?`1001 000d dddd 0100`:`1001 000d dddd 0101`,{d:t})]}function aa(e){let t=`ELPM`;if(e.length===0)return[I(`1001 0101 1101 1000`,{})];ki(e,2,t);let n=Di(e[0],t,`Rd`),r=Zi(e[1],t);if(L(`Rd`,n,0,31,t),r.base!==`Z`||r.mode!==`plain`&&r.mode!==`postinc`)throw new Ei(`ELPM: expected Z or Z+`);return[I(r.mode===`plain`?`1001 000d dddd 0110`:`1001 000d dddd 0111`,{d:n})]}function oa(e,t){return n=>(ki(n,0,t),[I(e,{})])}var sa={ADC:ji(`0001 11rd dddd rrrr`,`ADC`),ADD:ji(`0000 11rd dddd rrrr`,`ADD`),ADIW:qi(`1001 0110 KKdd KKKK`,`ADIW`),AND:ji(`0010 00rd dddd rrrr`,`AND`),ANDI:Pi(`0111 KKKK dddd KKKK`,`ANDI`),ASR:Fi(`1001 010d dddd 0101`,`ASR`),BCLR:Vi(`1001 0100 1sss 1000`,`BCLR`),BLD:Li(`1111 100d dddd 0bbb`,`BLD`),BRBC:Ui(`1111 01kk kkkk ksss`,`BRBC`),BRBS:Ui(`1111 00kk kkkk ksss`,`BRBS`),BRCC:Hi(`1111 01kk kkkk k000`,0,`BRCC`),BRCS:Hi(`1111 00kk kkkk k000`,0,`BRCS`),BREAK:Bi(`1001 0101 1001 1000`,`BREAK`),BREQ:Hi(`1111 00kk kkkk k001`,1,`BREQ`),BRGE:Hi(`1111 01kk kkkk k100`,4,`BRGE`),BRHC:Hi(`1111 01kk kkkk k101`,5,`BRHC`),BRHS:Hi(`1111 00kk kkkk k101`,5,`BRHS`),BRID:Hi(`1111 01kk kkkk k111`,7,`BRID`),BRIE:Hi(`1111 00kk kkkk k111`,7,`BRIE`),BRLO:Hi(`1111 00kk kkkk k000`,0,`BRLO`),BRLT:Hi(`1111 00kk kkkk k100`,4,`BRLT`),BRMI:Hi(`1111 00kk kkkk k010`,2,`BRMI`),BRNE:Hi(`1111 01kk kkkk k001`,1,`BRNE`),BRPL:Hi(`1111 01kk kkkk k010`,2,`BRPL`),BRSH:Hi(`1111 01kk kkkk k000`,0,`BRSH`),BRTC:Hi(`1111 01kk kkkk k110`,6,`BRTC`),BRTS:Hi(`1111 00kk kkkk k110`,6,`BRTS`),BRVC:Hi(`1111 01kk kkkk k011`,3,`BRVC`),BRVS:Hi(`1111 00kk kkkk k011`,3,`BRVS`),BSET:Vi(`1001 0100 0sss 1000`,`BSET`),BST:Li(`1111 101d dddd 0bbb`,`BST`),CALL:Gi(`1001 010k kkkk 111k`,`CALL`),CBI:zi(`1001 1000 AAAA Abbb`,`CBI`),CBR:Pi(`0111 KKKK dddd KKKK`,`CBR`,!0),CLR:ji(`0010 01rd dddd rrrr`,`CLR`),COM:Fi(`1001 010d dddd 0000`,`COM`),CP:ji(`0001 01rd dddd rrrr`,`CP`),CPC:ji(`0000 01rd dddd rrrr`,`CPC`),CPI:Pi(`0011 KKKK dddd KKKK`,`CPI`),CPSE:ji(`0001 00rd dddd rrrr`,`CPSE`),DEC:Fi(`1001 010d dddd 1010`,`DEC`),EICALL:oa(`1001 0101 0001 1001`,`EICALL`),EIJMP:oa(`1001 0100 0001 1001`,`EIJMP`),ELPM:aa,EOR:ji(`0010 01rd dddd rrrr`,`EOR`),FMUL:Ni(`0000 0011 0ddd 1rrr`,`FMUL`),FMULS:Ni(`0000 0011 1ddd 0rrr`,`FMULS`),FMULSU:Ni(`0000 0011 1ddd 1rrr`,`FMULSU`),ICALL:oa(`1001 0101 0000 1001`,`ICALL`),IJMP:oa(`1001 0100 0000 1001`,`IJMP`),IN:Ki(`1011 0AAd dddd AAAA`,`IN`,`reg-io`),INC:Fi(`1001 010d dddd 0011`,`INC`),JMP:Gi(`1001 010k kkkk 110k`,`JMP`),LAC:Xi(`1001 001r rrrr 0110`,`LAC`),LAS:Xi(`1001 001r rrrr 0101`,`LAS`),LAT:Xi(`1001 001r rrrr 0111`,`LAT`),LD:$i,LDD:na,LDI:Pi(`1110 KKKK dddd KKKK`,`LDI`),LDS:Yi(`LDS`,`load`),LPM:ia,LSL:ji(`0000 11dd dddd dddd`,`LSL`),LSR:Fi(`1001 010d dddd 0110`,`LSR`),MOV:ji(`0010 11rd dddd rrrr`,`MOV`),MOVW:Ji(),MUL:ji(`1001 11rd dddd rrrr`,`MUL`),MULS:Mi(`0000 0010 dddd rrrr`,`MULS`),MULSU:Ni(`0000 0011 0ddd 0rrr`,`MULSU`),NEG:Fi(`1001 010d dddd 0001`,`NEG`),NOP:Bi(`0000 0000 0000 0000`,`NOP`),OR:ji(`0010 10rd dddd rrrr`,`OR`),ORI:Pi(`0110 KKKK dddd KKKK`,`ORI`),OUT:Ki(`1011 1AAr rrrr AAAA`,`OUT`,`io-reg`),POP:Fi(`1001 000d dddd 1111`,`POP`),PUSH:Fi(`1001 001d dddd 1111`,`PUSH`),RCALL:Wi(`1101 kkkk kkkk kkkk`,`RCALL`),RET:Bi(`1001 0101 0000 1000`,`RET`),RETI:Bi(`1001 0101 0001 1000`,`RETI`),RJMP:Wi(`1100 kkkk kkkk kkkk`,`RJMP`),ROL:ji(`0001 11dd dddd dddd`,`ROL`),ROR:Fi(`1001 010d dddd 0111`,`ROR`),SBC:ji(`0000 10rd dddd rrrr`,`SBC`),SBCI:Pi(`0100 KKKK dddd KKKK`,`SBCI`),SBI:zi(`1001 1010 AAAA Abbb`,`SBI`),SBIC:zi(`1001 1001 AAAA Abbb`,`SBIC`),SBIS:zi(`1001 1011 AAAA Abbb`,`SBIS`),SBIW:qi(`1001 0111 KKdd KKKK`,`SBIW`),SBR:Pi(`0110 KKKK dddd KKKK`,`SBR`),SBRC:Ri(`1111 110r rrrr 0bbb`,`SBRC`),SBRS:Ri(`1111 111r rrrr 0bbb`,`SBRS`),SER:Ii(`1110 1111 dddd 1111`,`SER`),SLEEP:Bi(`1001 0101 1000 1000`,`SLEEP`),ST:ta,STD:ra,STS:Yi(`STS`,`store`),SUB:ji(`0001 10rd dddd rrrr`,`SUB`),SUBI:Pi(`0101 KKKK dddd KKKK`,`SUBI`),SWAP:Fi(`1001 010d dddd 0010`,`SWAP`),TST:ji(`0010 00dd dddd dddd`,`TST`),WDR:Bi(`1001 0101 1010 1000`,`WDR`),XCH:Xi(`1001 001r rrrr 0100`,`XCH`)},ca={SEC:{set:!0,s:0},CLC:{set:!1,s:0},SEZ:{set:!0,s:1},CLZ:{set:!1,s:1},SEN:{set:!0,s:2},CLN:{set:!1,s:2},SEV:{set:!0,s:3},CLV:{set:!1,s:3},SES:{set:!0,s:4},CLS:{set:!1,s:4},SEH:{set:!0,s:5},CLH:{set:!1,s:5},SET:{set:!0,s:6},CLT:{set:!1,s:6},SEI:{set:!0,s:7},CLI:{set:!1,s:7}};function la(e,t){let n=e.dataView.getUint16(93,!0);e.data[n]=e.pc&255,e.data[n-1]=e.pc>>8&255,e.pc22Bits&&(e.data[n-2]=e.pc>>16&255),e.dataView.setUint16(93,n-(e.pc22Bits?3:2),!0),e.data[95]&=127,e.cycles+=2,e.pc=t}var ua=256,da=128,fa=class{constructor(e,t=8192){this.progMem=e,this.sramBytes=t,this.data=new Uint8Array(this.sramBytes+ua),this.data16=new Uint16Array(this.data.buffer),this.dataView=new DataView(this.data.buffer),this.progBytes=new Uint8Array(this.progMem.buffer),this.readHooks=[],this.writeHooks=[],this.pendingInterrupts=Array(da),this.nextClockEvent=null,this.clockEventPool=[],this.pc22Bits=this.progBytes.length>131072,this.gpioPorts=new Set,this.gpioByPort=[],this.onWatchdogReset=()=>{},this.pc=0,this.cycles=0,this.nextInterrupt=-1,this.maxInterrupt=0,this.reset()}reset(){this.SP=this.data.length-1,this.pc=0,this.pendingInterrupts.fill(null),this.nextInterrupt=-1,this.nextClockEvent=null}readData(e){return e>=32&&this.readHooks[e]?this.readHooks[e](e):this.data[e]}writeData(e,t,n=255){let r=this.writeHooks[e];r&&r(t,this.data[e],e,n)||(this.data[e]=t)}get SP(){return this.dataView.getUint16(93,!0)}set SP(e){this.dataView.setUint16(93,e,!0)}get SREG(){return this.data[95]}get interruptsEnabled(){return!!(this.SREG&128)}setInterruptFlag(e){let{flagRegister:t,flagMask:n,enableRegister:r,enableMask:i}=e;e.inverseFlag?this.data[t]&=~n:this.data[t]|=n,this.data[r]&i&&this.queueInterrupt(e)}updateInterruptEnable(e,t){let{enableMask:n,flagRegister:r,flagMask:i,inverseFlag:a}=e;if(t&n){let t=this.data[r]&i;(a?!t:t)&&this.queueInterrupt(e)}else this.clearInterrupt(e,!1)}queueInterrupt(e){let{address:t}=e;this.pendingInterrupts[t]=e,(this.nextInterrupt===-1||this.nextInterrupt>t)&&(this.nextInterrupt=t),t>this.maxInterrupt&&(this.maxInterrupt=t)}clearInterrupt({address:e,flagRegister:t,flagMask:n},r=!0){r&&(this.data[t]&=~n);let{pendingInterrupts:i,maxInterrupt:a}=this;if(i[e]&&(i[e]=null,this.nextInterrupt===e)){this.nextInterrupt=-1;for(let t=e+1;t<=a;t++)if(i[t]){this.nextInterrupt=t;break}}}clearInterruptByFlag(e,t){let{flagRegister:n,flagMask:r}=e;t&r&&(this.data[n]&=~r,this.clearInterrupt(e))}addClockEvent(e,t){let{clockEventPool:n}=this;t=this.cycles+Math.max(1,t);let r=n.pop()??{cycles:t,callback:e,next:null};r.cycles=t,r.callback=e;let{nextClockEvent:i}=this,a=null;for(;i&&i.cycles<t;)a=i,i=i.next;return a?(a.next=r,r.next=i):(this.nextClockEvent=r,r.next=i),e}updateClockEvent(e,t){return this.clearClockEvent(e)?(this.addClockEvent(e,t),!0):!1}clearClockEvent(e){let{nextClockEvent:t}=this;if(!t)return!1;let{clockEventPool:n}=this,r=null;for(;t;){if(t.callback===e)return r?r.next=t.next:this.nextClockEvent=t.next,n.length<10&&n.push(t),!0;r=t,t=t.next}return!1}tick(){let{nextClockEvent:e}=this;e&&e.cycles<=this.cycles&&(e.callback(),this.nextClockEvent=e.next,this.clockEventPool.length<10&&this.clockEventPool.push(e));let{nextInterrupt:t}=this;if(this.interruptsEnabled&&t>=0){let e=this.pendingInterrupts[t];la(this,e.address),e.constant||this.clearInterrupt(e)}}};function pa(e){return(e&65039)==36864||(e&65039)==37376||(e&65038)==37902||(e&65038)==37900}function ma(e){let t=e.progMem[e.pc];if((t&64512)==7168){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=n+r+(e.data[95]&1),a=i&255;e.data[(t&496)>>4]=a;let o=e.data[95]&192;o|=a?0:2,o|=128&a?4:0,o|=(a^r)&(n^a)&128?8:0,o|=o>>2&1^o>>3&1?16:0,o|=i&256?1:0,o|=1&(n&r|r&~a|~a&n)?32:0,e.data[95]=o}else if((t&64512)==3072){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=n+r&255;e.data[(t&496)>>4]=i;let a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=(i^r)&(i^n)&128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=n+r&256?1:0,a|=1&(n&r|r&~i|~i&n)?32:0,e.data[95]=a}else if((t&65280)==38400){let n=2*((t&48)>>4)+24,r=e.dataView.getUint16(n,!0),i=r+(t&15|(t&192)>>2)&65535;e.dataView.setUint16(n,i,!0);let a=e.data[95]&224;a|=i?0:2,a|=32768&i?4:0,a|=~r&i&32768?8:0,a|=a>>2&1^a>>3&1?16:0,a|=~i&r&32768?1:0,e.data[95]=a,e.cycles++}else if((t&64512)==8192){let n=e.data[(t&496)>>4]&e.data[t&15|(t&512)>>5];e.data[(t&496)>>4]=n;let r=e.data[95]&225;r|=n?0:2,r|=128&n?4:0,r|=r>>2&1^r>>3&1?16:0,e.data[95]=r}else if((t&61440)==28672){let n=e.data[((t&240)>>4)+16]&(t&15|(t&3840)>>4);e.data[((t&240)>>4)+16]=n;let r=e.data[95]&225;r|=n?0:2,r|=128&n?4:0,r|=r>>2&1^r>>3&1?16:0,e.data[95]=r}else if((t&65039)==37893){let n=e.data[(t&496)>>4],r=n>>>1|128&n;e.data[(t&496)>>4]=r;let i=e.data[95]&224;i|=r?0:2,i|=128&r?4:0,i|=n&1,i|=i>>2&1^i&1?8:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if((t&65423)==38024)e.data[95]&=~(1<<((t&112)>>4));else if((t&65032)==63488){let n=t&7,r=(t&496)>>4;e.data[r]=~(1<<n)&e.data[r]|(e.data[95]>>6&1)<<n}else if((t&64512)==62464)e.data[95]&1<<(t&7)||(e.pc+=((t&504)>>3)-(t&512?64:0),e.cycles++);else if((t&64512)==61440)e.data[95]&1<<(t&7)&&(e.pc+=((t&504)>>3)-(t&512?64:0),e.cycles++);else if((t&65423)==37896)e.data[95]|=1<<((t&112)>>4);else if((t&65032)==64e3){let n=e.data[(t&496)>>4],r=t&7;e.data[95]=e.data[95]&191|(n>>r&1?64:0)}else if((t&65038)==37902){let n=e.progMem[e.pc+1]|(t&1)<<16|(t&496)<<13,r=e.pc+2,i=e.dataView.getUint16(93,!0),{pc22Bits:a}=e;e.data[i]=255&r,e.data[i-1]=r>>8&255,a&&(e.data[i-2]=r>>16&255),e.dataView.setUint16(93,i-(a?3:2),!0),e.pc=n-1,e.cycles+=a?4:3}else if((t&65280)==38912){let n=t&248,r=t&7,i=e.readData((n>>3)+32),a=1<<r;e.writeData((n>>3)+32,i&~a,a)}else if((t&65039)==37888){let n=(t&496)>>4,r=255-e.data[n];e.data[n]=r;let i=e.data[95]&225|1;i|=r?0:2,i|=128&r?4:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if((t&64512)==5120){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=n-r,a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=(n^r)&(n^i)&128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=+(r>n),a|=1&(~n&r|r&i|i&~n)?32:0,e.data[95]=a}else if((t&64512)==1024){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=e.data[95],a=n-r-(i&1);i=i&192|(!a&&i>>1&1?2:0)|r+(i&1)>n,i|=128&a?4:0,i|=(n^r)&(n^a)&128?8:0,i|=i>>2&1^i>>3&1?16:0,i|=1&(~n&r|r&a|a&~n)?32:0,e.data[95]=i}else if((t&61440)==12288){let n=e.data[((t&240)>>4)+16],r=t&15|(t&3840)>>4,i=n-r,a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=(n^r)&(n^i)&128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=+(r>n),a|=1&(~n&r|r&i|i&~n)?32:0,e.data[95]=a}else if((t&64512)==4096){if(e.data[(t&496)>>4]===e.data[t&15|(t&512)>>5]){let t=e.progMem[e.pc+1],n=pa(t)?2:1;e.pc+=n,e.cycles+=n}}else if((t&65039)==37898){let n=e.data[(t&496)>>4],r=n-1;e.data[(t&496)>>4]=r;let i=e.data[95]&225;i|=r?0:2,i|=128&r?4:0,i|=n===128?8:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if(t===38169){let t=e.pc+1,n=e.dataView.getUint16(93,!0),r=e.data[92];e.data[n]=t&255,e.data[n-1]=t>>8&255,e.data[n-2]=t>>16&255,e.dataView.setUint16(93,n-3,!0),e.pc=(r<<16|e.dataView.getUint16(30,!0))-1,e.cycles+=3}else if(t===37913)e.pc=(e.data[92]<<16|e.dataView.getUint16(30,!0))-1,e.cycles++;else if(t===38360){let t=e.data[91];e.data[0]=e.progBytes[t<<16|e.dataView.getUint16(30,!0)],e.cycles+=2}else if((t&65039)==36870){let n=e.data[91];e.data[(t&496)>>4]=e.progBytes[n<<16|e.dataView.getUint16(30,!0)],e.cycles+=2}else if((t&65039)==36871){let n=e.data[91],r=e.dataView.getUint16(30,!0);e.data[(t&496)>>4]=e.progBytes[n<<16|r],e.dataView.setUint16(30,r+1,!0),r===65535&&(e.data[91]=(n+1)%(e.progBytes.length>>16)),e.cycles+=2}else if((t&64512)==9216){let n=e.data[(t&496)>>4]^e.data[t&15|(t&512)>>5];e.data[(t&496)>>4]=n;let r=e.data[95]&225;r|=n?0:2,r|=128&n?4:0,r|=r>>2&1^r>>3&1?16:0,e.data[95]=r}else if((t&65416)==776){let n=e.data[((t&112)>>4)+16],r=e.data[(t&7)+16],i=n*r<<1;e.dataView.setUint16(0,i,!0),e.data[95]=e.data[95]&252|(65535&i?0:2)|(n*r&32768?1:0),e.cycles++}else if((t&65416)==896){let n=e.dataView.getInt8(((t&112)>>4)+16),r=e.dataView.getInt8((t&7)+16),i=n*r<<1;e.dataView.setInt16(0,i,!0),e.data[95]=e.data[95]&252|(65535&i?0:2)|(n*r&32768?1:0),e.cycles++}else if((t&65416)==904){let n=e.dataView.getInt8(((t&112)>>4)+16),r=e.data[(t&7)+16],i=n*r<<1;e.dataView.setInt16(0,i,!0),e.data[95]=e.data[95]&252|(65535&i?2:0)|(n*r&32768?1:0),e.cycles++}else if(t===38153){let t=e.pc+1,n=e.dataView.getUint16(93,!0),{pc22Bits:r}=e;e.data[n]=t&255,e.data[n-1]=t>>8&255,r&&(e.data[n-2]=t>>16&255),e.dataView.setUint16(93,n-(r?3:2),!0),e.pc=e.dataView.getUint16(30,!0)-1,e.cycles+=r?3:2}else if(t===37897)e.pc=e.dataView.getUint16(30,!0)-1,e.cycles++;else if((t&63488)==45056){let n=e.readData((t&15|(t&1536)>>5)+32);e.data[(t&496)>>4]=n}else if((t&65039)==37891){let n=e.data[(t&496)>>4],r=n+1&255;e.data[(t&496)>>4]=r;let i=e.data[95]&225;i|=r?0:2,i|=128&r?4:0,i|=n===127?8:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if((t&65038)==37900)e.pc=(e.progMem[e.pc+1]|(t&1)<<16|(t&496)<<13)-1,e.cycles+=2;else if((t&65039)==37382){let n=(t&496)>>4,r=e.data[n],i=e.readData(e.dataView.getUint16(30,!0));e.writeData(e.dataView.getUint16(30,!0),i&255-r),e.data[n]=i}else if((t&65039)==37381){let n=(t&496)>>4,r=e.data[n],i=e.readData(e.dataView.getUint16(30,!0));e.writeData(e.dataView.getUint16(30,!0),i|r),e.data[n]=i}else if((t&65039)==37383){let n=e.data[(t&496)>>4],r=e.readData(e.dataView.getUint16(30,!0));e.writeData(e.dataView.getUint16(30,!0),n^r),e.data[(t&496)>>4]=r}else if((t&61440)==57344)e.data[((t&240)>>4)+16]=t&15|(t&3840)>>4;else if((t&65039)==36864){e.cycles++;let n=e.readData(e.progMem[e.pc+1]);e.data[(t&496)>>4]=n,e.pc++}else if((t&65039)==36876)e.cycles++,e.data[(t&496)>>4]=e.readData(e.dataView.getUint16(26,!0));else if((t&65039)==36877){let n=e.dataView.getUint16(26,!0);e.cycles++,e.data[(t&496)>>4]=e.readData(n),e.dataView.setUint16(26,n+1,!0)}else if((t&65039)==36878){let n=e.dataView.getUint16(26,!0)-1;e.dataView.setUint16(26,n,!0),e.cycles++,e.data[(t&496)>>4]=e.readData(n)}else if((t&65039)==32776)e.cycles++,e.data[(t&496)>>4]=e.readData(e.dataView.getUint16(28,!0));else if((t&65039)==36873){let n=e.dataView.getUint16(28,!0);e.cycles++,e.data[(t&496)>>4]=e.readData(n),e.dataView.setUint16(28,n+1,!0)}else if((t&65039)==36874){let n=e.dataView.getUint16(28,!0)-1;e.dataView.setUint16(28,n,!0),e.cycles++,e.data[(t&496)>>4]=e.readData(n)}else if((t&53768)==32776&&t&7|(t&3072)>>7|(t&8192)>>8)e.cycles++,e.data[(t&496)>>4]=e.readData(e.dataView.getUint16(28,!0)+(t&7|(t&3072)>>7|(t&8192)>>8));else if((t&65039)==32768)e.cycles++,e.data[(t&496)>>4]=e.readData(e.dataView.getUint16(30,!0));else if((t&65039)==36865){let n=e.dataView.getUint16(30,!0);e.cycles++,e.data[(t&496)>>4]=e.readData(n),e.dataView.setUint16(30,n+1,!0)}else if((t&65039)==36866){let n=e.dataView.getUint16(30,!0)-1;e.dataView.setUint16(30,n,!0),e.cycles++,e.data[(t&496)>>4]=e.readData(n)}else if((t&53768)==32768&&t&7|(t&3072)>>7|(t&8192)>>8)e.cycles++,e.data[(t&496)>>4]=e.readData(e.dataView.getUint16(30,!0)+(t&7|(t&3072)>>7|(t&8192)>>8));else if(t===38344)e.data[0]=e.progBytes[e.dataView.getUint16(30,!0)],e.cycles+=2;else if((t&65039)==36868)e.data[(t&496)>>4]=e.progBytes[e.dataView.getUint16(30,!0)],e.cycles+=2;else if((t&65039)==36869){let n=e.dataView.getUint16(30,!0);e.data[(t&496)>>4]=e.progBytes[n],e.dataView.setUint16(30,n+1,!0),e.cycles+=2}else if((t&65039)==37894){let n=e.data[(t&496)>>4],r=n>>>1;e.data[(t&496)>>4]=r;let i=e.data[95]&224;i|=r?0:2,i|=n&1,i|=i>>2&1^i&1?8:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if((t&64512)==11264)e.data[(t&496)>>4]=e.data[t&15|(t&512)>>5];else if((t&65280)==256){let n=2*(t&15),r=2*((t&240)>>4);e.data[r]=e.data[n],e.data[r+1]=e.data[n+1]}else if((t&64512)==39936){let n=e.data[(t&496)>>4]*e.data[t&15|(t&512)>>5];e.dataView.setUint16(0,n,!0),e.data[95]=e.data[95]&252|(65535&n?0:2)|(32768&n?1:0),e.cycles++}else if((t&65280)==512){let n=e.dataView.getInt8(((t&240)>>4)+16)*e.dataView.getInt8((t&15)+16);e.dataView.setInt16(0,n,!0),e.data[95]=e.data[95]&252|(65535&n?0:2)|(32768&n?1:0),e.cycles++}else if((t&65416)==768){let n=e.dataView.getInt8(((t&112)>>4)+16)*e.data[(t&7)+16];e.dataView.setInt16(0,n,!0),e.data[95]=e.data[95]&252|(65535&n?0:2)|(32768&n?1:0),e.cycles++}else if((t&65039)==37889){let n=(t&496)>>4,r=e.data[n],i=0-r;e.data[n]=i;let a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=i===128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=+!!i,a|=1&(i|r)?32:0,e.data[95]=a}else if(t!==0){if((t&64512)==10240){let n=e.data[(t&496)>>4]|e.data[t&15|(t&512)>>5];e.data[(t&496)>>4]=n;let r=e.data[95]&225;r|=n?0:2,r|=128&n?4:0,r|=r>>2&1^r>>3&1?16:0,e.data[95]=r}else if((t&61440)==24576){let n=e.data[((t&240)>>4)+16]|(t&15|(t&3840)>>4);e.data[((t&240)>>4)+16]=n;let r=e.data[95]&225;r|=n?0:2,r|=128&n?4:0,r|=r>>2&1^r>>3&1?16:0,e.data[95]=r}else if((t&63488)==47104)e.writeData((t&15|(t&1536)>>5)+32,e.data[(t&496)>>4]);else if((t&65039)==36879){let n=e.dataView.getUint16(93,!0)+1;e.dataView.setUint16(93,n,!0),e.data[(t&496)>>4]=e.data[n],e.cycles++}else if((t&65039)==37391){let n=e.dataView.getUint16(93,!0);e.data[n]=e.data[(t&496)>>4],e.dataView.setUint16(93,n-1,!0),e.cycles++}else if((t&61440)==53248){let n=(t&2047)-(t&2048?2048:0),r=e.pc+1,i=e.dataView.getUint16(93,!0),{pc22Bits:a}=e;e.data[i]=255&r,e.data[i-1]=r>>8&255,a&&(e.data[i-2]=r>>16&255),e.dataView.setUint16(93,i-(a?3:2),!0),e.pc+=n,e.cycles+=a?3:2}else if(t===38152){let{pc22Bits:t}=e,n=e.dataView.getUint16(93,!0)+(t?3:2);e.dataView.setUint16(93,n,!0),e.pc=(e.data[n-1]<<8)+e.data[n]-1,t&&(e.pc|=e.data[n-2]<<16),e.cycles+=t?4:3}else if(t===38168){let{pc22Bits:t}=e,n=e.dataView.getUint16(93,!0)+(t?3:2);e.dataView.setUint16(93,n,!0),e.pc=(e.data[n-1]<<8)+e.data[n]-1,t&&(e.pc|=e.data[n-2]<<16),e.cycles+=t?4:3,e.data[95]|=128}else if((t&61440)==49152)e.pc+=(t&2047)-(t&2048?2048:0),e.cycles++;else if((t&65039)==37895){let n=e.data[(t&496)>>4],r=n>>>1|(e.data[95]&1)<<7;e.data[(t&496)>>4]=r;let i=e.data[95]&224;i|=r?0:2,i|=128&r?4:0,i|=1&n?1:0,i|=i>>2&1^i&1?8:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if((t&64512)==2048){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=e.data[95],a=n-r-(i&1);e.data[(t&496)>>4]=a,i=i&192|(!a&&i>>1&1?2:0)|r+(i&1)>n,i|=128&a?4:0,i|=(n^r)&(n^a)&128?8:0,i|=i>>2&1^i>>3&1?16:0,i|=1&(~n&r|r&a|a&~n)?32:0,e.data[95]=i}else if((t&61440)==16384){let n=e.data[((t&240)>>4)+16],r=t&15|(t&3840)>>4,i=e.data[95],a=n-r-(i&1);e.data[((t&240)>>4)+16]=a,i=i&192|(!a&&i>>1&1?2:0)|r+(i&1)>n,i|=128&a?4:0,i|=(n^r)&(n^a)&128?8:0,i|=i>>2&1^i>>3&1?16:0,i|=1&(~n&r|r&a|a&~n)?32:0,e.data[95]=i}else if((t&65280)==39424){let n=((t&248)>>3)+32,r=1<<(t&7);e.writeData(n,e.readData(n)|r,r),e.cycles++}else if((t&65280)==39168){if(!(e.readData(((t&248)>>3)+32)&1<<(t&7))){let t=e.progMem[e.pc+1],n=pa(t)?2:1;e.cycles+=n,e.pc+=n}}else if((t&65280)==39680){if(e.readData(((t&248)>>3)+32)&1<<(t&7)){let t=e.progMem[e.pc+1],n=pa(t)?2:1;e.cycles+=n,e.pc+=n}}else if((t&65280)==38656){let n=2*((t&48)>>4)+24,r=e.dataView.getUint16(n,!0),i=t&15|(t&192)>>2,a=r-i;e.dataView.setUint16(n,a,!0);let o=e.data[95]&192;o|=a?0:2,o|=32768&a?4:0,o|=r&~a&32768?8:0,o|=o>>2&1^o>>3&1?16:0,o|=+(i>r),o|=1&(~r&i|i&a|a&~r)?32:0,e.data[95]=o,e.cycles++}else if((t&65032)==64512){if(!(e.data[(t&496)>>4]&1<<(t&7))){let t=e.progMem[e.pc+1],n=pa(t)?2:1;e.cycles+=n,e.pc+=n}}else if((t&65032)==65024){if(e.data[(t&496)>>4]&1<<(t&7)){let t=e.progMem[e.pc+1],n=pa(t)?2:1;e.cycles+=n,e.pc+=n}}else if(t!==38280&&t!==38376&&t!==38392){if((t&65039)==37376){let n=e.data[(t&496)>>4],r=e.progMem[e.pc+1];e.writeData(r,n),e.pc++,e.cycles++}else if((t&65039)==37388)e.writeData(e.dataView.getUint16(26,!0),e.data[(t&496)>>4]),e.cycles++;else if((t&65039)==37389){let n=e.dataView.getUint16(26,!0);e.writeData(n,e.data[(t&496)>>4]),e.dataView.setUint16(26,n+1,!0),e.cycles++}else if((t&65039)==37390){let n=e.data[(t&496)>>4],r=e.dataView.getUint16(26,!0)-1;e.dataView.setUint16(26,r,!0),e.writeData(r,n),e.cycles++}else if((t&65039)==33288)e.writeData(e.dataView.getUint16(28,!0),e.data[(t&496)>>4]),e.cycles++;else if((t&65039)==37385){let n=e.data[(t&496)>>4],r=e.dataView.getUint16(28,!0);e.writeData(r,n),e.dataView.setUint16(28,r+1,!0),e.cycles++}else if((t&65039)==37386){let n=e.data[(t&496)>>4],r=e.dataView.getUint16(28,!0)-1;e.dataView.setUint16(28,r,!0),e.writeData(r,n),e.cycles++}else if((t&53768)==33288&&t&7|(t&3072)>>7|(t&8192)>>8)e.writeData(e.dataView.getUint16(28,!0)+(t&7|(t&3072)>>7|(t&8192)>>8),e.data[(t&496)>>4]),e.cycles++;else if((t&65039)==33280)e.writeData(e.dataView.getUint16(30,!0),e.data[(t&496)>>4]),e.cycles++;else if((t&65039)==37377){let n=e.dataView.getUint16(30,!0);e.writeData(n,e.data[(t&496)>>4]),e.dataView.setUint16(30,n+1,!0),e.cycles++}else if((t&65039)==37378){let n=e.data[(t&496)>>4],r=e.dataView.getUint16(30,!0)-1;e.dataView.setUint16(30,r,!0),e.writeData(r,n),e.cycles++}else if((t&53768)==33280&&t&7|(t&3072)>>7|(t&8192)>>8)e.writeData(e.dataView.getUint16(30,!0)+(t&7|(t&3072)>>7|(t&8192)>>8),e.data[(t&496)>>4]),e.cycles++;else if((t&64512)==6144){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=n-r;e.data[(t&496)>>4]=i;let a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=(n^r)&(n^i)&128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=+(r>n),a|=1&(~n&r|r&i|i&~n)?32:0,e.data[95]=a}else if((t&61440)==20480){let n=e.data[((t&240)>>4)+16],r=t&15|(t&3840)>>4,i=n-r;e.data[((t&240)>>4)+16]=i;let a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=(n^r)&(n^i)&128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=+(r>n),a|=1&(~n&r|r&i|i&~n)?32:0,e.data[95]=a}else if((t&65039)==37890){let n=(t&496)>>4,r=e.data[n];e.data[n]=(15&r)<<4|(240&r)>>>4}else if(t===38312)e.onWatchdogReset();else if((t&65039)==37380){let n=(t&496)>>4,r=e.data[n],i=e.data[e.dataView.getUint16(30,!0)];e.data[e.dataView.getUint16(30,!0)]=r,e.data[n]=i}}}e.pc=(e.pc+1)%e.progMem.length,e.cycles++}var ha;(function(e){e[e.AVCC=0]=`AVCC`,e[e.AREF=1]=`AREF`,e[e.Internal1V1=2]=`Internal1V1`,e[e.Internal2V56=3]=`Internal2V56`,e[e.Reserved=4]=`Reserved`})(ha||={});var ga;(function(e){e[e.SingleEnded=0]=`SingleEnded`,e[e.Differential=1]=`Differential`,e[e.Constant=2]=`Constant`,e[e.Temperature=3]=`Temperature`})(ga||={}),ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.Temperature,ga.Constant,ga.Constant;var _a={type:ga.Constant,voltage:0};ha.AREF,ha.AVCC,ha.Reserved,ha.Internal1V1;var va=7,ya=8,ba=16,xa=64,Sa=128,Ca=31,wa=32,Ta=8,Ea=8,Da=3,Oa=6,ka=class{constructor(e,t){this.cpu=e,this.config=t,this.channelValues=Array(this.config.numChannels),this.avcc=5,this.aref=5,this.onADCRead=e=>{let t=0;switch(e.type){case ga.Constant:t=e.voltage;break;case ga.SingleEnded:t=this.channelValues[e.channel]??0;break;case ga.Differential:t=e.gain*((this.channelValues[e.positiveChannel]||0)-(this.channelValues[e.negativeChannel]||0));break;case ga.Temperature:t=.378125;break}let n=t/this.referenceVoltage*1024,r=Math.min(Math.max(Math.floor(n),0),1023);this.cpu.addClockEvent(()=>this.completeADCRead(r),this.sampleCycles)},this.converting=!1,this.conversionCycles=25,this.ADC={address:this.config.adcInterrupt,flagRegister:this.config.ADCSRA,flagMask:ba,enableRegister:this.config.ADCSRA,enableMask:ya},e.writeHooks[t.ADCSRA]=(n,r)=>{if(n&Sa&&!(r&&Sa)&&(this.conversionCycles=25),e.data[t.ADCSRA]=n,e.updateInterruptEnable(this.ADC,n),!this.converting&&n&xa){if(!(n&Sa))return this.cpu.addClockEvent(()=>this.completeADCRead(0),this.sampleCycles),!0;let r=this.cpu.data[this.config.ADMUX]&Ca;e.data[t.ADCSRB]&Ta&&(r|=32),r&=t.muxInputMask;let i=t.muxChannels[r]??_a;return this.converting=!0,this.onADCRead(i),!0}}}completeADCRead(e){let{ADCL:t,ADCH:n,ADMUX:r,ADCSRA:i}=this.config;this.converting=!1,this.conversionCycles=13,this.cpu.data[r]&wa?(this.cpu.data[t]=e<<6&255,this.cpu.data[n]=e>>2):(this.cpu.data[t]=e&255,this.cpu.data[n]=e>>8&3),this.cpu.data[i]&=-65,this.cpu.setInterruptFlag(this.ADC)}get prescaler(){let{ADCSRA:e}=this.config;switch(this.cpu.data[e]&va){case 0:case 1:return 2;case 2:return 4;case 3:return 8;case 4:return 16;case 5:return 32;case 6:return 64;default:return 128}}get referenceVoltageType(){let{ADMUX:e,adcReferences:t}=this.config,n=this.cpu.data[e]>>Oa&Da;return t.length>4&&this.cpu.data[e]&Ea&&(n|=4),t[n]??ha.Reserved}get referenceVoltage(){switch(this.referenceVoltageType){case ha.AVCC:return this.avcc;case ha.AREF:return this.aref;case ha.Internal1V1:return 1.1;case ha.Internal2V56:return 2.56;default:return this.avcc}}get sampleCycles(){return this.conversionCycles*this.prescaler}},Aa={EICR:105,EIMSK:61,EIFR:60,index:0,iscOffset:0,interrupt:2},ja={EICR:105,EIMSK:61,EIFR:60,index:1,iscOffset:2,interrupt:4},Ma={PCIE:0,PCICR:104,PCIFR:59,PCMSK:107,pinChangeInterrupt:6,mask:255,offset:0},Na={PCIE:2,PCICR:104,PCIFR:59,PCMSK:109,pinChangeInterrupt:10,mask:255,offset:0},Pa={PIN:35,DDR:36,PORT:37,pinChange:Ma,externalInterrupts:[]},Fa={PIN:41,DDR:42,PORT:43,pinChange:Na,externalInterrupts:[null,null,Aa,ja]},Ia;(function(e){e[e.Low=0]=`Low`,e[e.High=1]=`High`,e[e.Input=2]=`Input`,e[e.InputPullUp=3]=`InputPullUp`})(Ia||={});var La;(function(e){e[e.None=0]=`None`,e[e.Enable=1]=`Enable`,e[e.Set=2]=`Set`,e[e.Clear=3]=`Clear`,e[e.Toggle=4]=`Toggle`})(La||={});var Ra;(function(e){e[e.LowLevel=0]=`LowLevel`,e[e.Change=1]=`Change`,e[e.FallingEdge=2]=`FallingEdge`,e[e.RisingEdge=3]=`RisingEdge`})(Ra||={});var za=class{constructor(e,t){this.cpu=e,this.portConfig=t,this.externalClockListeners=[],this.listeners=[],this.pinValue=0,this.overrideMask=255,this.overrideValue=0,this.lastValue=0,this.lastDdr=0,this.lastPin=0,this.openCollector=0,e.gpioPorts.add(this),e.gpioByPort[t.PORT]=this,e.writeHooks[t.DDR]=n=>{let r=e.data[t.PORT];return e.data[t.DDR]=n,this.writeGpio(r,n),this.updatePinRegister(n),!0},e.writeHooks[t.PORT]=n=>{let r=e.data[t.DDR];return e.data[t.PORT]=n,this.writeGpio(n,r),this.updatePinRegister(r),!0},e.writeHooks[t.PIN]=(n,r,i,a)=>{let o=e.data[t.PORT],s=e.data[t.DDR],c=o^n&a;return e.data[t.PORT]=c,this.writeGpio(c,s),this.updatePinRegister(s),!0};let{externalInterrupts:n}=t;this.externalInts=n.map(e=>e?{address:e.interrupt,flagRegister:e.EIFR,flagMask:1<<e.index,enableRegister:e.EIMSK,enableMask:1<<e.index}:null);let r=new Set(n.map(e=>e?.EICR));for(let e of r)this.attachInterruptHook(e||0);let i=n.find(e=>e&&e.EIMSK)?.EIMSK??0;this.attachInterruptHook(i,`mask`);let a=n.find(e=>e&&e.EIFR)?.EIFR??0;this.attachInterruptHook(a,`flag`);let{pinChange:o}=t;if(this.PCINT=o?{address:o.pinChangeInterrupt,flagRegister:o.PCIFR,flagMask:1<<o.PCIE,enableRegister:o.PCICR,enableMask:1<<o.PCIE}:null,o){let{PCIFR:t,PCMSK:n}=o;e.writeHooks[t]=t=>{for(let n of this.cpu.gpioPorts){let{PCINT:r}=n;r&&e.clearInterruptByFlag(r,t)}return!0},e.writeHooks[n]=t=>{e.data[n]=t;for(let n of this.cpu.gpioPorts){let{PCINT:r}=n;r&&e.updateInterruptEnable(r,t)}return!0}}}addListener(e){this.listeners.push(e)}removeListener(e){this.listeners=this.listeners.filter(t=>t!==e)}pinState(e){let t=this.cpu.data[this.portConfig.DDR],n=this.cpu.data[this.portConfig.PORT],r=1<<e,i=n&r?Ia.InputPullUp:Ia.Input,a=this.openCollector&r?i:Ia.High;return t&r?this.lastValue&r?a:Ia.Low:i}setPin(e,t){let n=1<<e;this.pinValue&=~n,t&&(this.pinValue|=n),this.updatePinRegister(this.cpu.data[this.portConfig.DDR])}timerOverridePin(e,t){let{cpu:n,portConfig:r}=this,i=1<<e;if(t===La.None)this.overrideMask|=i,this.overrideValue&=~i;else switch(this.overrideMask&=~i,t){case La.Enable:this.overrideValue&=~i,this.overrideValue|=n.data[r.PORT]&i;break;case La.Set:this.overrideValue|=i;break;case La.Clear:this.overrideValue&=~i;break;case La.Toggle:this.overrideValue^=i;break}let a=n.data[r.DDR];this.writeGpio(n.data[r.PORT],a),this.updatePinRegister(a)}updatePinRegister(e){var t,n;let r=this.pinValue&~e|this.lastValue&e;if(this.cpu.data[this.portConfig.PIN]=r,this.lastPin!==r){for(let e=0;e<8;e++)if((r&1<<e)!=(this.lastPin&1<<e)){let i=!!(r&1<<e);this.toggleInterrupt(e,i),(n=(t=this.externalClockListeners)[e])==null||n.call(t,i)}this.lastPin=r}}toggleInterrupt(e,t){let{cpu:n,portConfig:r,externalInts:i,PCINT:a}=this,{externalInterrupts:o,pinChange:s}=r,c=o[e],l=i[e];if(l&&c){let{EIMSK:e,index:r,EICR:i,iscOffset:a}=c;if(n.data[e]&1<<r){let e=n.data[i]>>a&3,r=!1;switch(l.constant=!1,e){case Ra.LowLevel:r=!t,l.constant=!0;break;case Ra.Change:r=!0;break;case Ra.FallingEdge:r=!t;break;case Ra.RisingEdge:r=t;break}r?n.setInterruptFlag(l):l.constant&&n.clearInterrupt(l,!0)}}if(s&&a&&s.mask&1<<e){let{PCMSK:t}=s;n.data[t]&1<<e+s.offset&&n.setInterruptFlag(a)}}attachInterruptHook(e,t=`other`){if(!e)return;let{cpu:n}=this;n.writeHooks[e]=r=>{t!==`flag`&&(n.data[e]=r);for(let e of n.gpioPorts){for(let i of e.externalInts)i&&t===`mask`&&n.updateInterruptEnable(i,r),i&&!i.constant&&t===`flag`&&n.clearInterruptByFlag(i,r);e.checkExternalInterrupts()}return!0}}checkExternalInterrupts(){let{cpu:e}=this,{externalInterrupts:t}=this.portConfig;for(let n=0;n<8;n++){let r=t[n];if(!r)continue;let i=!!(this.lastPin&1<<n),{EIFR:a,EIMSK:o,index:s,EICR:c,iscOffset:l,interrupt:u}=r;!(e.data[o]&1<<s)||i||(e.data[c]>>l&3)===Ra.LowLevel&&e.queueInterrupt({address:u,flagRegister:a,flagMask:1<<s,enableRegister:o,enableMask:1<<s,constant:!0})}}writeGpio(e,t){let n=(e&this.overrideMask|this.overrideValue)&t|e&~t,r=this.lastValue;if(n!==r||t!==this.lastDdr){this.lastValue=n,this.lastDdr=t;for(let e of this.listeners)e(n,r)}}},Ba={0:0,1:1,2:8,3:64,4:256,5:1024,6:0,7:0},Va;(function(e){e[e.FallingEdge=6]=`FallingEdge`,e[e.RisingEdge=7]=`RisingEdge`})(Va||={});var Ha={TOV:1,OCFA:2,OCFB:4,OCFC:0,TOIE:1,OCIEA:2,OCIEB:4,OCIEC:0};Object.assign({bits:8,captureInterrupt:0,compAInterrupt:28,compBInterrupt:30,compCInterrupt:0,ovfInterrupt:32,TIFR:53,OCRA:71,OCRB:72,OCRC:0,ICR:0,TCNT:70,TCCRA:68,TCCRB:69,TCCRC:0,TIMSK:110,dividers:Ba,compPortA:Fa.PORT,compPinA:6,compPortB:Fa.PORT,compPinB:5,compPortC:0,compPinC:0,externalClockPort:Fa.PORT,externalClockPin:4},Ha),Object.assign({bits:16,captureInterrupt:20,compAInterrupt:22,compBInterrupt:24,compCInterrupt:0,ovfInterrupt:26,TIFR:54,OCRA:136,OCRB:138,OCRC:0,ICR:134,TCNT:132,TCCRA:128,TCCRB:129,TCCRC:130,TIMSK:111,dividers:Ba,compPortA:Pa.PORT,compPinA:1,compPortB:Pa.PORT,compPinB:2,compPortC:0,compPinC:0,externalClockPort:Fa.PORT,externalClockPin:5},Ha),Object.assign({bits:8,captureInterrupt:0,compAInterrupt:14,compBInterrupt:16,compCInterrupt:0,ovfInterrupt:18,TIFR:55,OCRA:179,OCRB:180,OCRC:0,ICR:0,TCNT:178,TCCRA:176,TCCRB:177,TCCRC:0,TIMSK:112,dividers:{0:0,1:1,2:8,3:32,4:64,5:128,6:256,7:1024},compPortA:Pa.PORT,compPinA:3,compPortB:Fa.PORT,compPinB:3,compPortC:0,compPinC:0,externalClockPort:0,externalClockPin:0},Ha);var Ua;(function(e){e[e.Normal=0]=`Normal`,e[e.PWMPhaseCorrect=1]=`PWMPhaseCorrect`,e[e.CTC=2]=`CTC`,e[e.FastPWM=3]=`FastPWM`,e[e.PWMPhaseFrequencyCorrect=4]=`PWMPhaseFrequencyCorrect`,e[e.Reserved=5]=`Reserved`})(Ua||={});var Wa;(function(e){e[e.Max=0]=`Max`,e[e.Top=1]=`Top`,e[e.Bottom=2]=`Bottom`})(Wa||={});var R;(function(e){e[e.Immediate=0]=`Immediate`,e[e.Top=1]=`Top`,e[e.Bottom=2]=`Bottom`})(R||={});var Ga=1,Ka=2,qa=1,{Normal:Ja,PWMPhaseCorrect:Ya,CTC:Xa,FastPWM:Za,Reserved:Qa,PWMPhaseFrequencyCorrect:$a}=Ua,eo=[[Ja,255,R.Immediate,Wa.Max,0],[Ya,255,R.Top,Wa.Bottom,0],[Xa,Ga,R.Immediate,Wa.Max,0],[Za,255,R.Bottom,Wa.Max,0],[Qa,255,R.Immediate,Wa.Max,0],[Ya,Ga,R.Top,Wa.Bottom,qa],[Qa,255,R.Immediate,Wa.Max,0],[Za,Ga,R.Bottom,Wa.Top,qa]],to=[[Ja,65535,R.Immediate,Wa.Max,0],[Ya,255,R.Top,Wa.Bottom,0],[Ya,511,R.Top,Wa.Bottom,0],[Ya,1023,R.Top,Wa.Bottom,0],[Xa,Ga,R.Immediate,Wa.Max,0],[Za,255,R.Bottom,Wa.Top,0],[Za,511,R.Bottom,Wa.Top,0],[Za,1023,R.Bottom,Wa.Top,0],[$a,Ka,R.Bottom,Wa.Bottom,0],[$a,Ga,R.Bottom,Wa.Bottom,qa],[Ya,Ka,R.Top,Wa.Bottom,0],[Ya,Ga,R.Top,Wa.Bottom,qa],[Xa,Ka,R.Immediate,Wa.Max,0],[Qa,65535,R.Immediate,Wa.Max,0],[Za,Ka,R.Bottom,Wa.Top,qa],[Za,Ga,R.Bottom,Wa.Top,qa]];function no(e){switch(e){case 1:return La.Toggle;case 2:return La.Clear;case 3:return La.Set;default:return La.Enable}}var ro=128,io=64,ao=32,oo=class{constructor(e,t){if(this.cpu=e,this.config=t,this.MAX=this.config.bits===16?65535:255,this.lastCycle=0,this.ocrA=0,this.nextOcrA=0,this.ocrB=0,this.nextOcrB=0,this.hasOCRC=this.config.OCRC>0,this.ocrC=0,this.nextOcrC=0,this.ocrUpdateMode=R.Immediate,this.tovUpdateMode=Wa.Max,this.icr=0,this.tcnt=0,this.tcntNext=0,this.tcntUpdated=!1,this.updateDivider=!1,this.countingUp=!0,this.divider=0,this.externalClockRisingEdge=!1,this.highByteTemp=0,this.OVF={address:this.config.ovfInterrupt,flagRegister:this.config.TIFR,flagMask:this.config.TOV,enableRegister:this.config.TIMSK,enableMask:this.config.TOIE},this.OCFA={address:this.config.compAInterrupt,flagRegister:this.config.TIFR,flagMask:this.config.OCFA,enableRegister:this.config.TIMSK,enableMask:this.config.OCIEA},this.OCFB={address:this.config.compBInterrupt,flagRegister:this.config.TIFR,flagMask:this.config.OCFB,enableRegister:this.config.TIMSK,enableMask:this.config.OCIEB},this.OCFC={address:this.config.compCInterrupt,flagRegister:this.config.TIFR,flagMask:this.config.OCFC,enableRegister:this.config.TIMSK,enableMask:this.config.OCIEC},this.count=(e=!0,t=!1)=>{let{divider:n,lastCycle:r,cpu:i}=this,{cycles:a}=i,o=a-r;if(n&&o>=n||t){let e=t?1:Math.floor(o/n);this.lastCycle+=e*n;let r=this.tcnt,{timerMode:a,TOP:s}=this,c=a===Ya||a===$a,l=c?this.phasePwmCount(r,e):(r+e)%(s+1),u=r+e>s;if(this.tcntUpdated||(this.tcnt=l,c||this.timerUpdated(l,r)),!c){if(a===Za&&u){let{compA:e,compB:t}=this;e&&this.updateCompPin(e,`A`,!0),t&&this.updateCompPin(t,`B`,!0)}this.ocrUpdateMode==R.Bottom&&u&&(this.ocrA=this.nextOcrA,this.ocrB=this.nextOcrB,this.ocrC=this.nextOcrC),u&&(this.tovUpdateMode==Wa.Top||s===this.MAX)&&i.setInterruptFlag(this.OVF)}}if(this.tcntUpdated&&(this.tcnt=this.tcntNext,this.tcntUpdated=!1,(this.tcnt===0&&this.ocrUpdateMode===R.Bottom||this.tcnt===this.TOP&&this.ocrUpdateMode===R.Top)&&(this.ocrA=this.nextOcrA,this.ocrB=this.nextOcrB,this.ocrC=this.nextOcrC)),this.updateDivider){let{CS:e}=this,{externalClockPin:t}=this.config,n=this.config.dividers[e];this.lastCycle=n?this.cpu.cycles:0,this.updateDivider=!1,this.divider=n,this.config.externalClockPort&&!this.externalClockPort&&(this.externalClockPort=this.cpu.gpioByPort[this.config.externalClockPort]),this.externalClockPort&&(this.externalClockPort.externalClockListeners[t]=null),n?i.addClockEvent(this.count,this.lastCycle+n-i.cycles):this.externalClockPort&&(e===Va.FallingEdge||e===Va.RisingEdge)&&(this.externalClockPort.externalClockListeners[t]=this.externalClockCallback,this.externalClockRisingEdge=e===Va.RisingEdge);return}e&&n&&i.addClockEvent(this.count,this.lastCycle+n-i.cycles)},this.externalClockCallback=e=>{e===this.externalClockRisingEdge&&this.count(!1,!0)},this.updateWGMConfig(),this.cpu.readHooks[t.TCNT]=e=>(this.count(!1),this.config.bits===16&&(this.cpu.data[e+1]=this.tcnt>>8),this.cpu.data[e]=this.tcnt&255),this.cpu.writeHooks[t.TCNT]=e=>{this.tcntNext=this.highByteTemp<<8|e,this.countingUp=!0,this.tcntUpdated=!0,this.cpu.updateClockEvent(this.count,0),this.divider&&this.timerUpdated(this.tcntNext,this.tcntNext)},this.cpu.writeHooks[t.OCRA]=e=>{this.nextOcrA=this.highByteTemp<<8|e,this.ocrUpdateMode===R.Immediate&&(this.ocrA=this.nextOcrA)},this.cpu.writeHooks[t.OCRB]=e=>{this.nextOcrB=this.highByteTemp<<8|e,this.ocrUpdateMode===R.Immediate&&(this.ocrB=this.nextOcrB)},this.hasOCRC&&(this.cpu.writeHooks[t.OCRC]=e=>{this.nextOcrC=this.highByteTemp<<8|e,this.ocrUpdateMode===R.Immediate&&(this.ocrC=this.nextOcrC)}),this.config.bits===16){this.cpu.writeHooks[t.ICR]=e=>{this.icr=this.highByteTemp<<8|e};let n=e=>{this.highByteTemp=e},r=(t,n,r)=>(this.highByteTemp=t&this.ocrMask>>8,e.data[r]=this.highByteTemp,!0);this.cpu.writeHooks[t.TCNT+1]=n,this.cpu.writeHooks[t.OCRA+1]=r,this.cpu.writeHooks[t.OCRB+1]=r,this.hasOCRC&&(this.cpu.writeHooks[t.OCRC+1]=r),this.cpu.writeHooks[t.ICR+1]=n}e.writeHooks[t.TCCRA]=e=>(this.cpu.data[t.TCCRA]=e,this.updateWGMConfig(),!0),e.writeHooks[t.TCCRB]=e=>(t.TCCRC||(this.checkForceCompare(e),e&=-193),this.cpu.data[t.TCCRB]=e,this.updateDivider=!0,this.cpu.clearClockEvent(this.count),this.cpu.addClockEvent(this.count,0),this.updateWGMConfig(),!0),t.TCCRC&&(e.writeHooks[t.TCCRC]=e=>{this.checkForceCompare(e)}),e.writeHooks[t.TIFR]=e=>(this.cpu.data[t.TIFR]=e,this.cpu.clearInterruptByFlag(this.OVF,e),this.cpu.clearInterruptByFlag(this.OCFA,e),this.cpu.clearInterruptByFlag(this.OCFB,e),!0),e.writeHooks[t.TIMSK]=e=>{this.cpu.updateInterruptEnable(this.OVF,e),this.cpu.updateInterruptEnable(this.OCFA,e),this.cpu.updateInterruptEnable(this.OCFB,e)}}reset(){this.divider=0,this.lastCycle=0,this.ocrA=0,this.nextOcrA=0,this.ocrB=0,this.nextOcrB=0,this.ocrC=0,this.nextOcrC=0,this.icr=0,this.tcnt=0,this.tcntNext=0,this.tcntUpdated=!1,this.countingUp=!1,this.updateDivider=!0}get TCCRA(){return this.cpu.data[this.config.TCCRA]}get TCCRB(){return this.cpu.data[this.config.TCCRB]}get TIMSK(){return this.cpu.data[this.config.TIMSK]}get CS(){return this.TCCRB&7}get WGM(){let e=this.config.bits===16?24:8;return(this.TCCRB&e)>>1|this.TCCRA&3}get TOP(){switch(this.topValue){case Ga:return this.ocrA;case Ka:return this.icr;default:return this.topValue}}get ocrMask(){switch(this.topValue){case Ga:case Ka:return 65535;default:return this.topValue}}get debugTCNT(){return this.tcnt}updateWGMConfig(){let{config:e,WGM:t}=this,n=e.bits===16?to:eo,r=this.cpu.data[e.TCCRA],[i,a,o,s,c]=n[t];this.timerMode=i,this.topValue=a,this.ocrUpdateMode=o,this.tovUpdateMode=s;let l=i===Za||i===Ya||i===$a,u=this.compA;this.compA=r>>6&3,this.compA===1&&l&&!(c&qa)&&(this.compA=0),!!u!=!!this.compA&&this.updateCompA(this.compA?La.Enable:La.None);let d=this.compB;if(this.compB=r>>4&3,this.compB===1&&l&&(this.compB=0),!!d!=!!this.compB&&this.updateCompB(this.compB?La.Enable:La.None),this.hasOCRC){let e=this.compC;this.compC=r>>2&3,this.compC===1&&l&&(this.compC=0),!!e!=!!this.compC&&this.updateCompC(this.compC?La.Enable:La.None)}}phasePwmCount(e,t){let{ocrA:n,ocrB:r,ocrC:i,hasOCRC:a,TOP:o,MAX:s,tcntUpdated:c}=this;for(!e&&!o&&(t=0,this.ocrUpdateMode===R.Top&&(this.ocrA=this.nextOcrA,this.ocrB=this.nextOcrB,this.ocrC=this.nextOcrC));t>0;)this.countingUp?(e++,e===o&&!c&&(this.countingUp=!1,this.ocrUpdateMode===R.Top&&(this.ocrA=this.nextOcrA,this.ocrB=this.nextOcrB,this.ocrC=this.nextOcrC))):(e--,!e&&!c&&(this.countingUp=!0,this.cpu.setInterruptFlag(this.OVF),this.ocrUpdateMode===R.Bottom&&(this.ocrA=this.nextOcrA,this.ocrB=this.nextOcrB,this.ocrC=this.nextOcrC))),c||(e===n&&(this.cpu.setInterruptFlag(this.OCFA),this.compA&&this.updateCompPin(this.compA,`A`)),e===r&&(this.cpu.setInterruptFlag(this.OCFB),this.compB&&this.updateCompPin(this.compB,`B`)),a&&e===i&&(this.cpu.setInterruptFlag(this.OCFC),this.compC&&this.updateCompPin(this.compC,`C`))),t--;return e&s}timerUpdated(e,t){let{ocrA:n,ocrB:r,ocrC:i,hasOCRC:a}=this,o=t>e;((t<n||o)&&e>=n||t<n&&o)&&(this.cpu.setInterruptFlag(this.OCFA),this.compA&&this.updateCompPin(this.compA,`A`)),((t<r||o)&&e>=r||t<r&&o)&&(this.cpu.setInterruptFlag(this.OCFB),this.compB&&this.updateCompPin(this.compB,`B`)),a&&((t<i||o)&&e>=i||t<i&&o)&&(this.cpu.setInterruptFlag(this.OCFC),this.compC&&this.updateCompPin(this.compC,`C`))}checkForceCompare(e){this.timerMode==Ua.FastPWM||this.timerMode==Ua.PWMPhaseCorrect||this.timerMode==Ua.PWMPhaseFrequencyCorrect||(e&ro&&this.updateCompPin(this.compA,`A`),e&io&&this.updateCompPin(this.compB,`B`),this.config.compPortC&&e&ao&&this.updateCompPin(this.compC,`C`))}updateCompPin(e,t,n=!1){let r=La.None,i=e===3,a=this.countingUp===i;switch(this.timerMode){case Ja:case Xa:r=no(e);break;case Za:r=e===1?n?La.None:La.Toggle:i===n?La.Clear:La.Set;break;case Ya:case $a:r=e===1?La.Toggle:a?La.Set:La.Clear;break}r!==La.None&&(t===`A`?this.updateCompA(r):t===`B`?this.updateCompB(r):this.updateCompC(r))}updateCompA(e){let{compPortA:t,compPinA:n}=this.config;this.cpu.gpioByPort[t]?.timerOverridePin(n,e)}updateCompB(e){let{compPortB:t,compPinB:n}=this.config;this.cpu.gpioByPort[t]?.timerOverridePin(n,e)}updateCompC(e){let{compPortC:t,compPinC:n}=this.config;this.cpu.gpioByPort[t]?.timerOverridePin(n,e)}},z={ACBG:6,ACD:7,ACI:4,ACIC:2,ACIE:3,ACIS0:0,ACIS1:1,ACIaddr:56,ACME:6,ACO:5,ACSR:48,ADATE:5,ADC0D:0,ADC10D:2,ADC11D:3,ADC12D:4,ADC13D:5,ADC14D:6,ADC15D:7,ADC1D:1,ADC2D:2,ADC3D:3,ADC4D:4,ADC5D:5,ADC6D:6,ADC7D:7,ADC8D:0,ADC9D:1,ADCCaddr:58,ADCH:121,ADCH0:0,ADCH1:1,ADCH2:2,ADCH3:3,ADCH4:4,ADCH5:5,ADCH6:6,ADCH7:7,ADCL:120,ADCL0:0,ADCL1:1,ADCL2:2,ADCL3:3,ADCL4:4,ADCL5:5,ADCL6:6,ADCL7:7,ADCSRA:122,ADCSRB:123,ADEN:7,ADIE:3,ADIF:4,ADLAR:5,ADMUX:124,ADPS0:0,ADPS1:1,ADPS2:2,ADSC:6,ADTS0:0,ADTS1:1,ADTS2:2,AIN0D:0,AIN1D:1,AS2:5,ASSR:182,BLB01:2,BLB02:3,BLB11:4,BLB12:5,BLBSET:3,BODLEVEL0:0,BODLEVEL1:1,BODLEVEL2:2,BOOTRST:0,BOOTSZ0:1,BOOTSZ1:2,BORF:2,CAL0:0,CAL1:1,CAL2:2,CAL3:3,CAL4:4,CAL5:5,CAL6:6,CAL7:7,CKDIV8:7,CKOUT:6,CKSEL0:0,CKSEL1:1,CKSEL2:2,CKSEL3:3,CLKPCE:7,CLKPR:97,CLKPS0:0,CLKPS1:1,CLKPS2:2,CLKPS3:3,COM0A0:6,COM0A1:7,COM0B0:4,COM0B1:5,COM1A0:6,COM1A1:7,COM1B0:4,COM1B1:5,COM1C0:2,COM1C1:3,COM2A0:6,COM2A1:7,COM2B0:4,COM2B1:5,COM3A0:6,COM3A1:7,COM3B0:4,COM3B1:5,COM3C0:2,COM3C1:3,COM4A0:6,COM4A1:7,COM4B0:4,COM4B1:5,COM4C0:2,COM4C1:3,COM5A0:6,COM5A1:7,COM5B0:4,COM5B1:5,COM5C0:2,COM5C1:3,CPHA:2,CPOL:3,CS00:0,CS01:1,CS02:2,CS10:0,CS11:1,CS12:2,CS20:0,CS21:1,CS22:2,CS30:0,CS31:1,CS32:2,CS40:0,CS41:1,CS42:2,CS50:0,CS51:1,CS52:2,DDA0:0,DDA1:1,DDA2:2,DDA3:3,DDA4:4,DDA5:5,DDA6:6,DDA7:7,DDB0:0,DDB1:1,DDB2:2,DDB3:3,DDB4:4,DDB5:5,DDB6:6,DDB7:7,DDC0:0,DDC1:1,DDC2:2,DDC3:3,DDC4:4,DDC5:5,DDC6:6,DDC7:7,DDD0:0,DDD1:1,DDD2:2,DDD3:3,DDD4:4,DDD5:5,DDD6:6,DDD7:7,DDE0:0,DDE1:1,DDE2:2,DDE3:3,DDE4:4,DDE5:5,DDE6:6,DDE7:7,DDF0:0,DDF1:1,DDF2:2,DDF3:3,DDF4:4,DDF5:5,DDF6:6,DDF7:7,DDG0:0,DDG1:1,DDG2:2,DDG3:3,DDG4:4,DDG5:5,DDH0:0,DDH1:1,DDH2:2,DDH3:3,DDH4:4,DDH5:5,DDH6:6,DDH7:7,DDJ0:0,DDJ1:1,DDJ2:2,DDJ3:3,DDJ4:4,DDJ5:5,DDJ6:6,DDJ7:7,DDK0:0,DDK1:1,DDK2:2,DDK3:3,DDK4:4,DDK5:5,DDK6:6,DDK7:7,DDL0:0,DDL1:1,DDL2:2,DDL3:3,DDL4:4,DDL5:5,DDL6:6,DDL7:7,DDRA:1,DDRB:4,DDRC:7,DDRD:10,DDRE:13,DDRF:16,DDRG:19,DDRH:257,DDRJ:260,DDRK:263,DDRL:266,DIDR0:126,DIDR1:127,DIDR2:125,DOR0:3,DOR1:3,DOR2:3,DOR3:3,DORD:5,E2END:4095,EEADRBITS:12,EEAR0:0,EEAR1:1,EEAR10:2,EEAR11:3,EEAR2:2,EEAR3:3,EEAR4:4,EEAR5:5,EEAR6:6,EEAR7:7,EEAR8:0,EEAR9:1,EEARH:34,EEARL:33,EECR:31,EEDR:32,EEDR0:0,EEDR1:1,EEDR2:2,EEDR3:3,EEDR4:4,EEDR5:5,EEDR6:6,EEDR7:7,EEMPE:2,EEPE:1,EEPM0:4,EEPM1:5,EEPROMEND:4095,EERE:0,EERIE:3,EESAVE:3,EICRA:105,EICRB:106,EIFR:28,EIMSK:29,EIND:60,EIND0:0,ERDYaddr:60,EXCLK:6,EXTRF:1,FE0:4,FE1:4,FE2:4,FE3:4,FIRSTBOOTSTART:130560,FLASHEND:131071,FOC0A:7,FOC0B:6,FOC1A:7,FOC1B:6,FOC1C:5,FOC2A:7,FOC2B:6,FOC3A:7,FOC3B:6,FOC3C:5,FOC4A:7,FOC4B:6,FOC4C:5,FOC5A:7,FOC5B:6,FOC5C:5,FOURTHBOOTSTART:126976,GPIOR0:30,GPIOR00:0,GPIOR01:1,GPIOR02:2,GPIOR03:3,GPIOR04:4,GPIOR05:5,GPIOR06:6,GPIOR07:7,GPIOR1:42,GPIOR10:0,GPIOR11:1,GPIOR12:2,GPIOR13:3,GPIOR14:4,GPIOR15:5,GPIOR16:6,GPIOR17:7,GPIOR2:43,GPIOR20:0,GPIOR21:1,GPIOR22:2,GPIOR23:3,GPIOR24:4,GPIOR25:5,GPIOR26:6,GPIOR27:7,GTCCR:35,ICES1:6,ICES3:6,ICES4:6,ICES5:6,ICF1:5,ICF3:5,ICF4:5,ICF5:5,ICIE1:5,ICIE3:5,ICIE4:5,ICIE5:5,ICNC1:7,ICNC3:7,ICNC4:7,ICNC5:7,ICP1addr:32,ICP3addr:62,ICP4addr:82,ICP5addr:92,ICR1H:135,ICR1L:134,ICR3H:151,ICR3L:150,ICR4H:167,ICR4L:166,ICR5H:295,ICR5H0:0,ICR5H1:1,ICR5H2:2,ICR5H3:3,ICR5H4:4,ICR5H5:5,ICR5H6:6,ICR5H7:7,ICR5L:294,ICR5L0:0,ICR5L1:1,ICR5L2:2,ICR5L3:3,ICR5L4:4,ICR5L5:5,ICR5L6:6,ICR5L7:7,IDRD:7,INT0:0,INT0addr:2,INT1:1,INT1addr:4,INT2:2,INT2addr:6,INT3:3,INT3addr:8,INT4:4,INT4addr:10,INT5:5,INT5addr:12,INT6:6,INT6addr:14,INT7:7,INT7addr:16,INTF0:0,INTF1:1,INTF2:2,INTF3:3,INTF4:4,INTF5:5,INTF6:6,INTF7:7,INT_VECTORS_SIZE:114,IOEND:511,ISC00:0,ISC01:1,ISC10:2,ISC11:3,ISC20:4,ISC21:5,ISC30:6,ISC31:7,ISC40:0,ISC41:1,ISC50:2,ISC51:3,ISC60:4,ISC61:5,ISC70:6,ISC71:7,IVCE:0,IVSEL:1,JTAGEN:6,JTD:7,JTRF:4,LARGEBOOTSTART:126976,LB1:0,LB2:1,MCUCR:53,MCUSR:52,MPCM0:0,MPCM1:0,MPCM2:0,MPCM3:0,MSTR:4,MUX0:0,MUX1:1,MUX2:2,MUX3:3,MUX4:4,MUX5:3,NRWW_START_ADDR:126976,NRWW_STOP_ADDR:131071,OC0Aaddr:42,OC0Baddr:44,OC1Aaddr:34,OC1Baddr:36,OC1Caddr:38,OC2Aaddr:26,OC2Baddr:28,OC3Aaddr:64,OC3Baddr:66,OC3Caddr:68,OC4Aaddr:84,OC4Baddr:86,OC4Caddr:88,OC5Aaddr:94,OC5Baddr:96,OC5Caddr:98,OCDEN:7,OCDR:49,OCDR0:0,OCDR1:1,OCDR2:2,OCDR3:3,OCDR4:4,OCDR5:5,OCDR6:6,OCDR7:7,OCF0A:1,OCF0B:2,OCF1A:1,OCF1B:2,OCF1C:3,OCF2A:1,OCF2B:2,OCF3A:1,OCF3B:2,OCF3C:3,OCF4A:1,OCF4B:2,OCF4C:3,OCF5A:1,OCF5B:2,OCF5C:3,OCIE0A:1,OCIE0B:2,OCIE1A:1,OCIE1B:2,OCIE1C:3,OCIE2A:1,OCIE2B:2,OCIE3A:1,OCIE3B:2,OCIE3C:3,OCIE4A:1,OCIE4B:2,OCIE4C:3,OCIE5A:1,OCIE5B:2,OCIE5C:3,OCR0A:39,OCR0A_0:0,OCR0A_1:1,OCR0A_2:2,OCR0A_3:3,OCR0A_4:4,OCR0A_5:5,OCR0A_6:6,OCR0A_7:7,OCR0B:40,OCR0B_0:0,OCR0B_1:1,OCR0B_2:2,OCR0B_3:3,OCR0B_4:4,OCR0B_5:5,OCR0B_6:6,OCR0B_7:7,OCR1AH:137,OCR1AL:136,OCR1BH:139,OCR1BL:138,OCR1CH:141,OCR1CL:140,OCR2A:179,OCR2AUB:3,OCR2A_0:0,OCR2A_1:1,OCR2A_2:2,OCR2A_3:3,OCR2A_4:4,OCR2A_5:5,OCR2A_6:6,OCR2A_7:7,OCR2B:180,OCR2BUB:2,OCR2B_0:0,OCR2B_1:1,OCR2B_2:2,OCR2B_3:3,OCR2B_4:4,OCR2B_5:5,OCR2B_6:6,OCR2B_7:7,OCR3AH:153,OCR3AL:152,OCR3BH:155,OCR3BL:154,OCR3CH:157,OCR3CL:156,OCR4AH:169,OCR4AL:168,OCR4BH:171,OCR4BL:170,OCR4CH:173,OCR4CL:172,OCR5AH:297,OCR5AL:296,OCR5BH:299,OCR5BL:298,OCR5CH:301,OCR5CL:300,OSCCAL:102,OVF0addr:46,OVF1addr:40,OVF2addr:30,OVF3addr:70,OVF4addr:90,OVF5addr:100,PA0:0,PA1:1,PA2:2,PA3:3,PA4:4,PA5:5,PA6:6,PA7:7,PAGESIZE:128,PB0:0,PB1:1,PB2:2,PB3:3,PB4:4,PB5:5,PB6:6,PB7:7,PC0:0,PC1:1,PC2:2,PC3:3,PC4:4,PC5:5,PC6:6,PC7:7,PCI0addr:18,PCI1addr:20,PCI2addr:22,PCICR:104,PCIE0:0,PCIE1:1,PCIE2:2,PCIF0:0,PCIF1:1,PCIF2:2,PCIFR:27,PCINT0:0,PCINT1:1,PCINT10:2,PCINT11:3,PCINT12:4,PCINT13:5,PCINT14:6,PCINT15:7,PCINT16:0,PCINT17:1,PCINT18:2,PCINT19:3,PCINT2:2,PCINT20:4,PCINT21:5,PCINT22:6,PCINT23:7,PCINT3:3,PCINT4:4,PCINT5:5,PCINT6:6,PCINT7:7,PCINT8:0,PCINT9:1,PCMSK0:107,PCMSK1:108,PCMSK2:109,PD0:0,PD1:1,PD2:2,PD3:3,PD4:4,PD5:5,PD6:6,PD7:7,PE0:0,PE1:1,PE2:2,PE3:3,PE4:4,PE5:5,PE6:6,PE7:7,PF0:0,PF1:1,PF2:2,PF3:3,PF4:4,PF5:5,PF6:6,PF7:7,PG0:0,PG1:1,PG2:2,PG3:3,PG4:4,PG5:5,PGERS:1,PGWRT:2,PH0:0,PH1:1,PH2:2,PH3:3,PH4:4,PH5:5,PH6:6,PH7:7,PINA:0,PINA0:0,PINA1:1,PINA2:2,PINA3:3,PINA4:4,PINA5:5,PINA6:6,PINA7:7,PINB:3,PINB0:0,PINB1:1,PINB2:2,PINB3:3,PINB4:4,PINB5:5,PINB6:6,PINB7:7,PINC:6,PINC0:0,PINC1:1,PINC2:2,PINC3:3,PINC4:4,PINC5:5,PINC6:6,PINC7:7,PIND:9,PIND0:0,PIND1:1,PIND2:2,PIND3:3,PIND4:4,PIND5:5,PIND6:6,PIND7:7,PINE:12,PINE0:0,PINE1:1,PINE2:2,PINE3:3,PINE4:4,PINE5:5,PINE6:6,PINE7:7,PINF:15,PINF0:0,PINF1:1,PINF2:2,PINF3:3,PINF4:4,PINF5:5,PINF6:6,PINF7:7,PING:18,PING0:0,PING1:1,PING2:2,PING3:3,PING4:4,PING5:5,PINH:256,PINH0:0,PINH1:1,PINH2:2,PINH3:3,PINH4:4,PINH5:5,PINH6:6,PINH7:7,PINJ:259,PINJ0:0,PINJ1:1,PINJ2:2,PINJ3:3,PINJ4:4,PINJ5:5,PINJ6:6,PINJ7:7,PINK:262,PINK0:0,PINK1:1,PINK2:2,PINK3:3,PINK4:4,PINK5:5,PINK6:6,PINK7:7,PINL:265,PINL0:0,PINL1:1,PINL2:2,PINL3:3,PINL4:4,PINL5:5,PINL6:6,PINL7:7,PJ0:0,PJ1:1,PJ2:2,PJ3:3,PJ4:4,PJ5:5,PJ6:6,PJ7:7,PK0:0,PK1:1,PK2:2,PK3:3,PK4:4,PK5:5,PK6:6,PK7:7,PL0:0,PL1:1,PL2:2,PL3:3,PL4:4,PL5:5,PL6:6,PL7:7,PORF:0,PORTA:2,PORTA0:0,PORTA1:1,PORTA2:2,PORTA3:3,PORTA4:4,PORTA5:5,PORTA6:6,PORTA7:7,PORTB:5,PORTB0:0,PORTB1:1,PORTB2:2,PORTB3:3,PORTB4:4,PORTB5:5,PORTB6:6,PORTB7:7,PORTC:8,PORTC0:0,PORTC1:1,PORTC2:2,PORTC3:3,PORTC4:4,PORTC5:5,PORTC6:6,PORTC7:7,PORTD:11,PORTD0:0,PORTD1:1,PORTD2:2,PORTD3:3,PORTD4:4,PORTD5:5,PORTD6:6,PORTD7:7,PORTE:14,PORTE0:0,PORTE1:1,PORTE2:2,PORTE3:3,PORTE4:4,PORTE5:5,PORTE6:6,PORTE7:7,PORTF:17,PORTF0:0,PORTF1:1,PORTF2:2,PORTF3:3,PORTF4:4,PORTF5:5,PORTF6:6,PORTF7:7,PORTG:20,PORTG0:0,PORTG1:1,PORTG2:2,PORTG3:3,PORTG4:4,PORTG5:5,PORTH:258,PORTH0:0,PORTH1:1,PORTH2:2,PORTH3:3,PORTH4:4,PORTH5:5,PORTH6:6,PORTH7:7,PORTJ:261,PORTJ0:0,PORTJ1:1,PORTJ2:2,PORTJ3:3,PORTJ4:4,PORTJ5:5,PORTJ6:6,PORTJ7:7,PORTK:264,PORTK0:0,PORTK1:1,PORTK2:2,PORTK3:3,PORTK4:4,PORTK5:5,PORTK6:6,PORTK7:7,PORTL:267,PORTL0:0,PORTL1:1,PORTL2:2,PORTL3:3,PORTL4:4,PORTL5:5,PORTL6:6,PORTL7:7,PRADC:0,PRR0:100,PRR1:101,PRSPI:2,PRTIM0:5,PRTIM1:3,PRTIM2:6,PRTIM3:3,PRTIM4:4,PRTIM5:5,PRTWI:7,PRUSART0:1,PRUSART1:0,PRUSART2:1,PRUSART3:2,PSR10:0,PSR2:1,PSRASY:1,PSRSYNC:0,PUD:4,RAMEND:8703,RAMPZ:59,RAMPZ0:0,RAMPZ1:1,REFS0:6,REFS1:7,RWWSB:6,RWWSRE:4,RWW_START_ADDR:0,RWW_STOP_ADDR:126975,RXB80:1,RXB81:1,RXB82:1,RXB83:1,RXC0:7,RXC1:7,RXC2:7,RXC3:7,RXCIE0:7,RXCIE1:7,RXCIE2:7,RXCIE3:7,RXEN0:4,RXEN1:4,RXEN2:4,RXEN3:4,SE:0,SECONDBOOTSTART:130048,SIGNATURE_000:30,SIGNATURE_001:152,SIGNATURE_002:1,SIGRD:5,SM0:1,SM1:2,SM2:3,SMALLBOOTSTART:130560,SMCR:51,SPCR:44,SPDR:46,SPDR0:0,SPDR1:1,SPDR2:2,SPDR3:3,SPDR4:4,SPDR5:5,SPDR6:6,SPDR7:7,SPE:6,SPH:62,SPI2X:0,SPIE:7,SPIEN:5,SPIF:7,SPIaddr:48,SPL:61,SPMCSR:55,SPMEN:0,SPMIE:7,SPMRaddr:80,SPR0:0,SPR1:1,SPSR:45,SRAM_SIZE:8192,SRAM_START:512,SRE:7,SREG:63,SREG_C:0,SREG_H:5,SREG_I:7,SREG_N:2,SREG_S:4,SREG_T:6,SREG_V:3,SREG_Z:1,SRL0:4,SRL1:5,SRL2:6,SRW00:0,SRW01:1,SRW10:2,SRW11:3,SUT0:4,SUT1:5,TCCR0A:36,TCCR0B:37,TCCR1A:128,TCCR1B:129,TCCR1C:130,TCCR2A:176,TCCR2B:177,TCCR3A:144,TCCR3B:145,TCCR3C:146,TCCR4A:160,TCCR4B:161,TCCR4C:162,TCCR5A:288,TCCR5B:289,TCCR5C:290,TCN2UB:4,TCNT0:38,TCNT0_0:0,TCNT0_1:1,TCNT0_2:2,TCNT0_3:3,TCNT0_4:4,TCNT0_5:5,TCNT0_6:6,TCNT0_7:7,TCNT1H:133,TCNT1L:132,TCNT2:178,TCNT2_0:0,TCNT2_1:1,TCNT2_2:2,TCNT2_3:3,TCNT2_4:4,TCNT2_5:5,TCNT2_6:6,TCNT2_7:7,TCNT3H:149,TCNT3L:148,TCNT4H:165,TCNT4L:164,TCNT5H:293,TCNT5L:292,TCR2AUB:1,TCR2BUB:0,THIRDBOOTSTART:129024,TIFR0:21,TIFR1:22,TIFR2:23,TIFR3:24,TIFR4:25,TIFR5:26,TIMSK0:110,TIMSK1:111,TIMSK2:112,TIMSK3:113,TIMSK4:114,TIMSK5:115,TOIE0:0,TOIE1:0,TOIE2:0,TOIE2A:0,TOIE3:0,TOIE4:0,TOIE5:0,TOV0:0,TOV1:0,TOV2:0,TOV3:0,TOV4:0,TOV5:0,TSM:7,TWA0:1,TWA1:2,TWA2:3,TWA3:4,TWA4:5,TWA5:6,TWA6:7,TWAM0:1,TWAM1:2,TWAM2:3,TWAM3:4,TWAM4:5,TWAM5:6,TWAM6:7,TWAMR:189,TWAMR0:1,TWAMR1:2,TWAMR2:3,TWAMR3:4,TWAMR4:5,TWAMR5:6,TWAMR6:7,TWAR:186,TWBR:184,TWBR0:0,TWBR1:1,TWBR2:2,TWBR3:3,TWBR4:4,TWBR5:5,TWBR6:6,TWBR7:7,TWCR:188,TWD0:0,TWD1:1,TWD2:2,TWD3:3,TWD4:4,TWD5:5,TWD6:6,TWD7:7,TWDR:187,TWEA:6,TWEN:2,TWGCE:0,TWIE:0,TWINT:7,TWIaddr:78,TWPS0:0,TWPS1:1,TWS3:3,TWS4:4,TWS5:5,TWS6:6,TWS7:7,TWSR:185,TWSTA:5,TWSTO:4,TWWC:3,TXB80:0,TXB81:0,TXB82:0,TXB83:0,TXC0:6,TXC1:6,TXC2:6,TXC3:6,TXCIE0:6,TXCIE1:6,TXCIE2:6,TXCIE3:6,TXEN0:3,TXEN1:3,TXEN2:3,TXEN3:3,U2X0:1,U2X1:1,U2X2:1,U2X3:1,UBRR0:0,UBRR0H:197,UBRR0L:196,UBRR1:1,UBRR10:2,UBRR11:3,UBRR1H:205,UBRR1L:204,UBRR2:2,UBRR2H:213,UBRR2L:212,UBRR3:3,UBRR3H:309,UBRR3L:308,UBRR4:4,UBRR5:5,UBRR6:6,UBRR7:7,UBRR8:0,UBRR9:1,UBRR_0:0,UBRR_1:1,UBRR_10:2,UBRR_11:3,UBRR_2:2,UBRR_3:3,UBRR_4:4,UBRR_5:5,UBRR_6:6,UBRR_7:7,UBRR_8:0,UBRR_9:1,UCPHA0:1,UCPHA1:1,UCPOL0:0,UCPOL1:0,UCPOL2:0,UCPOL3:0,UCSR0A:192,UCSR0B:193,UCSR0C:194,UCSR1A:200,UCSR1B:201,UCSR1C:202,UCSR2A:208,UCSR2B:209,UCSR2C:210,UCSR3A:304,UCSR3B:305,UCSR3C:306,UCSZ00:1,UCSZ01:2,UCSZ02:2,UCSZ10:1,UCSZ11:2,UCSZ12:2,UCSZ20:1,UCSZ21:2,UCSZ22:2,UCSZ30:1,UCSZ31:2,UCSZ32:2,UDORD0:2,UDORD1:2,UDR0:198,UDR0_0:0,UDR0_1:1,UDR0_2:2,UDR0_3:3,UDR0_4:4,UDR0_5:5,UDR0_6:6,UDR0_7:7,UDR1:206,UDR1_0:0,UDR1_1:1,UDR1_2:2,UDR1_3:3,UDR1_4:4,UDR1_5:5,UDR1_6:6,UDR1_7:7,UDR2:214,UDR2_0:0,UDR2_1:1,UDR2_2:2,UDR2_3:3,UDR2_4:4,UDR2_5:5,UDR2_6:6,UDR2_7:7,UDR3:310,UDR3_0:0,UDR3_1:1,UDR3_2:2,UDR3_3:3,UDR3_4:4,UDR3_5:5,UDR3_6:6,UDR3_7:7,UDRE0:5,UDRE0addr:52,UDRE1:5,UDRE1addr:74,UDRE2:5,UDRE2addr:104,UDRE3:5,UDRE3addr:110,UDRIE0:5,UDRIE1:5,UDRIE2:5,UDRIE3:5,UMSEL0:6,UMSEL00:6,UMSEL01:7,UMSEL1:7,UMSEL10:6,UMSEL11:7,UMSEL20:6,UMSEL21:7,UMSEL30:6,UMSEL31:7,UPE0:2,UPE1:2,UPE2:2,UPE3:2,UPM00:4,UPM01:5,UPM10:4,UPM11:5,UPM20:4,UPM21:5,UPM30:4,UPM31:5,URXC0addr:50,URXC1addr:72,URXC2addr:102,URXC3addr:108,USBS0:3,USBS1:3,USBS2:3,USBS3:3,UTXC0addr:54,UTXC1addr:76,UTXC2addr:106,UTXC3addr:112,WCOL:6,WDCE:4,WDE:3,WDIE:6,WDIF:7,WDP0:0,WDP1:1,WDP2:2,WDP3:5,WDRF:3,WDTCSR:96,WDTON:4,WDTaddr:24,WGM00:0,WGM01:1,WGM02:3,WGM10:0,WGM11:1,WGM12:3,WGM13:4,WGM20:0,WGM21:1,WGM22:3,WGM30:0,WGM31:1,WGM32:3,WGM33:4,WGM40:0,WGM41:1,WGM42:3,WGM43:4,WGM50:0,WGM51:1,WGM52:3,WGM53:4,XMBK:7,XMCRA:116,XMCRB:117,XMM0:0,XMM1:1,XMM2:2,XRAMEND:65535,_UBRR0:0,_UBRR1:1},so=z.RAMEND,co=z.SRAM_START,lo=z.FLASHEND;z.E2END;var uo=so-co+1+256;function fo(e,t,n){return{PIN:e,DDR:t,PORT:n,externalInterrupts:[]}}var po={A:fo(z.PINA+32,z.DDRA+32,z.PORTA+32),B:fo(z.PINB+32,z.DDRB+32,z.PORTB+32),C:fo(z.PINC+32,z.DDRC+32,z.PORTC+32),D:fo(z.PIND+32,z.DDRD+32,z.PORTD+32),E:fo(z.PINE+32,z.DDRE+32,z.PORTE+32),F:fo(z.PINF+32,z.DDRF+32,z.PORTF+32),G:fo(z.PING+32,z.DDRG+32,z.PORTG+32),H:fo(z.PINH,z.DDRH,z.PORTH),J:fo(z.PINJ,z.DDRJ,z.PORTJ),K:fo(z.PINK,z.DDRK,z.PORTK),L:fo(z.PINL,z.DDRL,z.PORTL)},B={TOV:0,OCFA:1,OCFB:2,OCFC:0,TOIE:0,OCIEA:1,OCIEB:2,OCIEC:0},mo={TOV:0,OCFA:1,OCFB:2,OCFC:3,TOIE:0,OCIEA:1,OCIEB:2,OCIEC:3},ho={0:0,1:1,2:8,3:64,4:256,5:1024,6:0,7:0},go={0:0,1:1,2:8,3:32,4:64,5:128,6:256,7:1024},_o={bits:8,captureInterrupt:0,compAInterrupt:z.OC0Aaddr,compBInterrupt:z.OC0Baddr,compCInterrupt:0,ovfInterrupt:z.OVF0addr,TIFR:z.TIFR0+32,OCRA:z.OCR0A+32,OCRB:z.OCR0B+32,OCRC:0,ICR:0,TCNT:z.TCNT0+32,TCCRA:z.TCCR0A+32,TCCRB:z.TCCR0B+32,TCCRC:0,TIMSK:z.TIMSK0,dividers:ho,compPortA:po.B.PORT,compPinA:7,compPortB:po.G.PORT,compPinB:5,compPortC:0,compPinC:0,externalClockPort:0,externalClockPin:0,...B},vo={bits:8,captureInterrupt:0,compAInterrupt:z.OC2Aaddr,compBInterrupt:z.OC2Baddr,compCInterrupt:0,ovfInterrupt:z.OVF2addr,TIFR:z.TIFR2+32,OCRA:z.OCR2A,OCRB:z.OCR2B,OCRC:0,ICR:0,TCNT:z.TCNT2,TCCRA:z.TCCR2A,TCCRB:z.TCCR2B,TCCRC:0,TIMSK:z.TIMSK2,dividers:go,compPortA:po.B.PORT,compPinA:4,compPortB:po.H.PORT,compPinB:6,compPortC:0,compPinC:0,externalClockPort:0,externalClockPin:0,...B};function yo(e){return{bits:16,captureInterrupt:e.capt,compAInterrupt:e.compA,compBInterrupt:e.compB,compCInterrupt:e.compC,ovfInterrupt:e.ovf,TIFR:e.TIFR+32,OCRA:e.OCRA,OCRB:e.OCRB,OCRC:e.OCRC,ICR:e.ICR,TCNT:e.TCNT,TCCRA:e.TCCRA,TCCRB:e.TCCRB,TCCRC:e.TCCRC,TIMSK:e.TIMSK,dividers:ho,compPortA:e.compPortA,compPinA:e.compPinA,compPortB:e.compPortB,compPinB:e.compPinB,compPortC:e.compPortC,compPinC:e.compPinC,externalClockPort:0,externalClockPin:0,...mo}}var bo=[_o,yo({compA:z.OC1Aaddr,compB:z.OC1Baddr,compC:z.OC1Caddr,ovf:z.OVF1addr,capt:z.ICP1addr,TIFR:z.TIFR1,TIMSK:z.TIMSK1,OCRA:z.OCR1AL,OCRB:z.OCR1BL,OCRC:z.OCR1CL,ICR:z.ICR1L,TCNT:z.TCNT1L,TCCRA:z.TCCR1A,TCCRB:z.TCCR1B,TCCRC:z.TCCR1C,compPortA:po.B.PORT,compPinA:5,compPortB:po.B.PORT,compPinB:6,compPortC:po.B.PORT,compPinC:7}),vo,yo({compA:z.OC3Aaddr,compB:z.OC3Baddr,compC:z.OC3Caddr,ovf:z.OVF3addr,capt:z.ICP3addr,TIFR:z.TIFR3,TIMSK:z.TIMSK3,OCRA:z.OCR3AL,OCRB:z.OCR3BL,OCRC:z.OCR3CL,ICR:z.ICR3L,TCNT:z.TCNT3L,TCCRA:z.TCCR3A,TCCRB:z.TCCR3B,TCCRC:z.TCCR3C,compPortA:po.E.PORT,compPinA:3,compPortB:po.E.PORT,compPinB:4,compPortC:po.E.PORT,compPinC:5}),yo({compA:z.OC4Aaddr,compB:z.OC4Baddr,compC:z.OC4Caddr,ovf:z.OVF4addr,capt:z.ICP4addr,TIFR:z.TIFR4,TIMSK:z.TIMSK4,OCRA:z.OCR4AL,OCRB:z.OCR4BL,OCRC:z.OCR4CL,ICR:z.ICR4L,TCNT:z.TCNT4L,TCCRA:z.TCCR4A,TCCRB:z.TCCR4B,TCCRC:z.TCCR4C,compPortA:po.H.PORT,compPinA:3,compPortB:po.H.PORT,compPinB:4,compPortC:po.H.PORT,compPinC:5}),yo({compA:z.OC5Aaddr,compB:z.OC5Baddr,compC:z.OC5Caddr,ovf:z.OVF5addr,capt:z.ICP5addr,TIFR:z.TIFR5,TIMSK:z.TIMSK5,OCRA:z.OCR5AL,OCRB:z.OCR5BL,OCRC:z.OCR5CL,ICR:z.ICR5L,TCNT:z.TCNT5L,TCCRA:z.TCCR5A,TCCRB:z.TCCR5B,TCCRC:z.TCCR5C,compPortA:po.L.PORT,compPinA:3,compPortB:po.L.PORT,compPinB:4,compPortC:po.L.PORT,compPinC:5})],xo={0:{type:ga.SingleEnded,channel:0},1:{type:ga.SingleEnded,channel:1},2:{type:ga.SingleEnded,channel:2},3:{type:ga.SingleEnded,channel:3},4:{type:ga.SingleEnded,channel:4},5:{type:ga.SingleEnded,channel:5},6:{type:ga.SingleEnded,channel:6},7:{type:ga.SingleEnded,channel:7},8:{type:ga.Temperature},30:{type:ga.Constant,voltage:1.1},31:{type:ga.Constant,voltage:0}},So={ADMUX:z.ADMUX,ADCSRA:z.ADCSRA,ADCSRB:z.ADCSRB,ADCL:z.ADCL,ADCH:z.ADCH,DIDR0:z.DIDR0,adcInterrupt:z.ADCCaddr,numChannels:16,muxInputMask:31,muxChannels:xo,adcReferences:[ha.AREF,ha.AVCC,ha.Reserved,ha.Internal1V1]};z.INT0addr,z.INT1addr,z.INT2addr,z.INT3addr,z.INT4addr,z.INT5addr,z.INT6addr,z.INT7addr,z.PCI0addr,z.PCI1addr,z.PCI2addr,z.WDTaddr,z.OC2Aaddr,z.OC2Baddr,z.OVF2addr,z.ICP1addr,z.OC1Aaddr,z.OC1Baddr,z.OC1Caddr,z.OVF1addr,z.OC0Aaddr,z.OC0Baddr,z.OVF0addr,z.SPIaddr,z.URXC0addr,z.UDRE0addr,z.UTXC0addr,z.ACIaddr,z.ADCCaddr,z.ERDYaddr,z.ICP3addr,z.OC3Aaddr,z.OC3Baddr,z.OC3Caddr,z.OVF3addr,z.URXC1addr,z.UDRE1addr,z.UTXC1addr,z.TWIaddr,z.SPMRaddr,z.ICP4addr,z.OC4Aaddr,z.OC4Baddr,z.OC4Caddr,z.OVF4addr,z.ICP5addr,z.OC5Aaddr,z.OC5Baddr,z.OC5Caddr,z.OVF5addr,z.URXC2addr,z.UDRE2addr,z.UTXC2addr,z.URXC3addr,z.UDRE3addr,z.UTXC3addr;function Co(e,t){let n=new Map;for(let[r,i]of e){if(i.file!==t)continue;let e=n.get(i.line);(e===void 0||r<e)&&n.set(i.line,r)}return n}var wo=class extends Error{},To={JMP:2,CALL:2,LDS:2,STS:2};function Eo(e){return To[e]??1}var Do={rdRr:[`ADC`,`ADD`,`AND`,`CP`,`CPC`,`CPSE`,`EOR`,`MOV`,`MUL`,`OR`,`SBC`,`SUB`],rdRrHigh:[`MULS`],rdRrMul:[`FMUL`,`FMULS`,`FMULSU`,`MULSU`],rdK:[`ANDI`,`CPI`,`LDI`,`ORI`,`SBCI`,`SBR`,`SUBI`,`CBR`],rdOnly:[`ASR`,`COM`,`DEC`,`INC`,`LSR`,`NEG`,`POP`,`PUSH`,`ROR`,`SWAP`],rdOnlyHigh:[`SER`],rdBit:[`BLD`,`BST`],rrBit:[`SBRC`,`SBRS`],ioBit:[`CBI`,`SBI`,`SBIC`,`SBIS`],noOperand:[`BREAK`,`NOP`,`RET`,`RETI`,`SLEEP`,`WDR`,`IJMP`,`ICALL`,`EIJMP`,`EICALL`],sBit:[`BCLR`,`BSET`],branchGeneric:[`BRBC`,`BRBS`],branchFixedS:[`BRCC`,`BRCS`,`BREQ`,`BRGE`,`BRHC`,`BRHS`,`BRID`,`BRIE`,`BRLO`,`BRLT`,`BRMI`,`BRNE`,`BRPL`,`BRSH`,`BRTC`,`BRTS`,`BRVC`,`BRVS`],relJump:[`RJMP`,`RCALL`],absJump:[`JMP`,`CALL`],inOutIn:[`IN`],inOutOut:[`OUT`],adiwSbiw:[`ADIW`,`SBIW`],movw:[`MOVW`],ldsLoad:[`LDS`],stsStore:[`STS`],zRd:[`XCH`,`LAC`,`LAS`,`LAT`],ld:[`LD`],ldd:[`LDD`],st:[`ST`],std:[`STD`],lpm:[`LPM`],elpm:[`ELPM`],selfPair:[`CLR`,`LSL`,`ROL`,`TST`]},Oo=new Map;for(let[e,t]of Object.entries(Do))for(let n of t)Oo.set(n,e);function ko(e){return!!ca[e]||Oo.has(e)}function Ao(e,t){if(e>=0)return e;let n=2**t;return(e%n+n)%n}function jo(e,t=`main.asm`,n){let r=[],i=[],a=e=>{if(n){let t=e.trim().toLowerCase().replace(/^["']|["']$/g,``);for(let[e,r]of Object.entries(n))if(e.trim().toLowerCase()===t)return r}return Ti(e)},o;try{let n=new Ci,r=n.expand(`.include "m2560def.inc"`,t,a),s=n.expand(e,t,a);o=[...r,...s],i.push(...n.messages)}catch(e){let n=e;return r.push({file:n.file??t,line:n.line??0,message:n.message}),{success:!1,program:new Uint16Array,sourceMap:new Map,labels:new Map,errors:r,warnings:i}}try{o=Lo(o)}catch(e){return r.push({file:t,line:0,message:e.message}),{success:!1,program:new Uint16Array,sourceMap:new Map,labels:new Map,errors:r,warnings:i}}let s=new Map;{let e=0,n=co,a=0,c=`CSEG`,l=[],u=()=>l.length?l[l.length-1].taken:!0,d=()=>c===`CSEG`?e:c===`DSEG`?n:a,f={resolveSymbol(e){if(e.toUpperCase()===`PC`)return d();let t=s.get(e.toUpperCase());if(!t)throw new di(`undefined symbol '${e}'`);return t.value}},p=e=>gi(e,f);for(let t=0;t<o.length;t++){let{text:f,file:m,line:h}=o[t];try{let{label:t,rest:r}=No(f),o=r.trim(),g=/^\.(\w+)\s*(.*)$/.exec(o),_=g?g[1].toLowerCase():null;if(_===`if`||_===`ifdef`||_===`ifndef`){let e=u(),t=_===`if`?e&&p(g[2])!==0:e&&s.has(g[2].trim().toUpperCase())===(_===`ifdef`);l.push({parentActive:e,taken:t,anyTaken:t});continue}if(_===`elif`){if(!l.length)throw new wo(`.elif without .if/.ifdef/.ifndef`);let e=l[l.length-1];if(!e.parentActive||e.anyTaken)e.taken=!1;else{let t=p(g[2])!==0;e.taken=t,t&&(e.anyTaken=!0)}continue}if(_===`else`){if(!l.length)throw new wo(`.else without .if`);let e=l[l.length-1];!e.parentActive||e.anyTaken?e.taken=!1:(e.taken=!0,e.anyTaken=!0);continue}if(_===`endif`){if(!l.length)throw new wo(`.endif without .if`);l.pop();continue}if(!u())continue;if(t){if(s.has(t.toUpperCase()))throw new wo(`symbol '${t}' redefined`);s.set(t.toUpperCase(),{kind:`label`,value:d(),segment:c,displayName:t})}if(o.length===0)continue;if(_){let t=g[2];switch(_){case`error`:throw new wo(Mo(t.trim()));case`warning`:case`message`:i.push({file:m,line:h,message:t.trim()});continue;case`cseg`:c=`CSEG`;continue;case`dseg`:c=`DSEG`;continue;case`eseg`:c=`ESEG`;continue;case`org`:{let r=Math.trunc(p(t.trim()));c===`CSEG`?e=r:c===`DSEG`?n=r:a=r;continue}case`equ`:case`set`:{let e=/^(\w+)\s*=\s*(.+)$/.exec(t.trim());if(!e)throw new wo(`malformed .${_} (expected NAME = expr)`);s.set(e[1].toUpperCase(),{kind:`equ`,value:p(e[2])});continue}case`def`:{let e=/^(\w+)\s*=\s*[rR](\d+)$/.exec(t.trim());if(!e)throw new wo(`malformed .def (expected NAME = Rn)`);s.set(e[1].toUpperCase(),{kind:`def`,value:parseInt(e[2],10)});continue}case`undef`:s.delete(t.trim().toUpperCase());continue;case`byte`:c!==`DSEG`&&i.push({file:m,line:h,message:`.byte used outside .dseg`}),n+=Math.trunc(p(t.trim()));continue;case`db`:{let n=Fo(t);c===`CSEG`?e+=Math.ceil(n/2):c===`ESEG`&&(a+=n);continue}case`dw`:{let n=_i(t).filter(e=>e.length>0);c===`CSEG`?e+=n.length:c===`ESEG`&&(a+=n.length*2);continue}case`device`:case`list`:case`nolist`:case`listmac`:case`exit`:case`macro`:case`endmacro`:case`endm`:continue;default:i.push({file:m,line:h,message:`unknown directive .${_} ignored`});continue}}let{mnemonic:v}=Po(o),y=v.toUpperCase();if(!ko(y))throw new wo(`unknown instruction '${v}'`);c===`CSEG`&&(e+=Eo(y))}catch(e){r.push({file:m,line:h,message:e.message})}}l.length&&r.push({file:t,line:o.length,message:`unterminated .if (missing .endif)`})}let c=new Uint16Array(lo+1),l=new Map;{let e=0,t=co,n=0,i=`CSEG`,a=[],u=()=>a.length?a[a.length-1].taken:!0,d=()=>i===`CSEG`?e:i===`DSEG`?t:n,f=new Map(s),p={resolveSymbol(e){if(e.toUpperCase()===`PC`)return d();let t=f.get(e.toUpperCase());if(!t)throw new di(`undefined symbol '${e}'`);return t.value}},m=e=>gi(e,p),h=(e,t,n,r)=>{e>=0&&e<c.length&&(c[e]=t&65535,l.set(e,{file:n,line:r}))};for(let c=0;c<o.length;c++){let{text:l,file:d,line:p}=o[c],{rest:g}=No(l),_=g.trim(),v=/^\.(\w+)\s*(.*)$/.exec(_),y=v?v[1].toLowerCase():null;try{if(y===`if`||y===`ifdef`||y===`ifndef`){let e=u(),t=y===`if`?e&&m(v[2])!==0:e&&f.has(v[2].trim().toUpperCase())===(y===`ifdef`);a.push({parentActive:e,taken:t,anyTaken:t});continue}if(y===`elif`){if(a.length){let e=a[a.length-1];if(!e.parentActive||e.anyTaken)e.taken=!1;else{let t=m(v[2])!==0;e.taken=t,t&&(e.anyTaken=!0)}}continue}if(y===`else`){if(a.length){let e=a[a.length-1];!e.parentActive||e.anyTaken?e.taken=!1:(e.taken=!0,e.anyTaken=!0)}continue}if(y===`endif`){a.pop();continue}if(!u()||_.length===0)continue;if(y){let r=v[2];switch(y){case`cseg`:i=`CSEG`;continue;case`dseg`:i=`DSEG`;continue;case`eseg`:i=`ESEG`;continue;case`org`:{let a=Math.trunc(m(r.trim()));i===`CSEG`?e=a:i===`DSEG`?t=a:n=a;continue}case`byte`:t+=Math.trunc(m(r.trim()));continue;case`db`:{let t=Io(r,m);if(i===`CSEG`)for(let n=0;n<t.length;n+=2){let r=t[n],i=n+1<t.length?t[n+1]:0;h(e++,r|i<<8,d,p)}else i===`ESEG`&&(n+=t.length);continue}case`dw`:{let t=_i(r).filter(e=>e.length>0);for(let r of t){let t=Math.trunc(m(r));i===`CSEG`?h(e++,t,d,p):i===`ESEG`&&(n+=2)}continue}case`equ`:case`set`:{let e=/^(\w+)\s*=\s*(.+)$/.exec(r.trim());e&&f.set(e[1].toUpperCase(),{kind:`equ`,value:m(e[2])});continue}case`def`:{let e=/^(\w+)\s*=\s*[rR](\d+)$/.exec(r.trim());e&&f.set(e[1].toUpperCase(),{kind:`def`,value:parseInt(e[2],10)});continue}case`undef`:f.delete(r.trim().toUpperCase());continue;default:continue}}let{mnemonic:r,operandsText:o}=Po(_),c=r.toUpperCase();if(!ko(c))continue;let l=e,g=Ho(c,o,l,m,s);for(let e=0;e<g.length;e++)h(l+e,g[e],d,p);e+=g.length}catch(t){if(r.push({file:d,line:p,message:t.message}),y===null){let{mnemonic:t}=Po(_),n=t.toUpperCase();ko(n)&&(e+=Eo(n))}}}}let u=new Map;for(let e of s.values())e.kind===`label`&&u.set(e.displayName??`?`,{value:e.value,segment:e.segment});return{success:r.length===0,program:c,sourceMap:l,labels:u,errors:r,warnings:i}}function Mo(e){let t=vi(e);return t?String.fromCharCode(...t):e}function No(e){let t=/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$/.exec(e);return t?{label:t[1],rest:t[2]}:{label:null,rest:e}}function Po(e){let t=/^(\S+)\s*(.*)$/.exec(e.trim());return t?{mnemonic:t[1],operandsText:t[2]}:{mnemonic:``,operandsText:``}}function Fo(e){let t=_i(e).filter(e=>e.length>0),n=0;for(let e of t){let t=vi(e);n+=t?t.length:1}return n}function Io(e,t){let n=_i(e).filter(e=>e.length>0),r=[];for(let e of n){let n=vi(e);n?r.push(...n):r.push(Math.trunc(t(e))&255)}return r}function Lo(e){let t=new Map,n=[],r=0;for(;r<e.length;){let{text:i}=e[r],a=/^\s*\.macro\s+(\S+)/i.exec(i);if(a){let n=a[1].toUpperCase(),i=[];for(r++;r<e.length&&!/^\s*\.endm(acro)?\b/i.test(e[r].text);)i.push(e[r]),r++;r++,t.set(n,i);continue}let{label:o,rest:s}=No(i),c=/^\s*(\S+)\s*(.*)$/.exec(s);if(!o&&c&&t.has(c[1].toUpperCase())){let i=t.get(c[1].toUpperCase()),a=_i(c[2]).map(e=>e.trim());for(let t of i){let i=t.text;for(let e=0;e<a.length;e++)i=i.split(`@${e}`).join(a[e]);n.push({text:i,file:e[r].file,line:e[r].line})}r++;continue}n.push(e[r]),r++}return n}var Ro=/^[rR](\d{1,2})$/,zo={X:26,Y:28,Z:30};function Bo(e,t){let n=/^(\S+)\s*:\s*(\S+)$/.exec(e);if(n){let r=Bo(n[1],t),i=Bo(n[2],t);if(r===null||i===null)return null;if(r!==i+1)throw new wo(`register pair '${e}' is not two adjacent registers (high:low)`);return i}let r=t.get(e.toUpperCase());if(r&&r.kind===`def`)return r.value;let i=zo[e.toUpperCase()];if(i!==void 0)return i;let a=Ro.exec(e);if(a){let e=parseInt(a[1],10);if(e>=0&&e<=31)return e}return null}function Vo(e,t){let n=e.trim(),r=/^-([XYZxyz])$/.exec(n);if(r)return{kind:`ptr`,base:r[1].toUpperCase(),mode:`predec`};if(r=/^([XYZxyz])\+$/.exec(n),r)return{kind:`ptr`,base:r[1].toUpperCase(),mode:`postinc`};if(r=/^([XYZxyz])$/.exec(n),r)return{kind:`ptr`,base:r[1].toUpperCase(),mode:`plain`};if(r=/^([XYZxyz])\s*\+\s*(.+)$/.exec(n),r){let e=Math.trunc(t(r[2]));return{kind:`ptr`,base:r[1].toUpperCase(),mode:`disp`,disp:e}}return null}function Ho(e,t,n,r,i){let a=_i(t).filter(e=>e.length>0);if(ca[e]){let{set:t,s:n}=ca[e];return sa[t?`BSET`:`BCLR`]([{kind:`imm`,n}])}let o=Oo.get(e),s=e=>{let t=Bo(e.trim(),i);if(t===null)throw new wo(`expected a register, got '${e}'`);return{kind:`reg`,n:t}},c=(e,t)=>{let n=Math.trunc(r(e.trim()));return t!==void 0&&(n=Ao(n,t)),{kind:`imm`,n}},l=e=>{let t=Vo(e.trim(),r);if(!t)throw new wo(`expected X/Y/Z addressing, got '${e}'`);return t},u=(e,t)=>({kind:`imm`,n:Math.trunc(r(e.trim()))-(n+1)});switch(o){case`rdRr`:case`rdRrHigh`:case`rdRrMul`:return Uo(a,2,e),sa[e]([s(a[0]),s(a[1])]);case`rdK`:return Uo(a,2,e),sa[e]([s(a[0]),c(a[1],8)]);case`rdOnly`:case`rdOnlyHigh`:return Uo(a,1,e),sa[e]([s(a[0])]);case`rdBit`:return Uo(a,2,e),sa[e]([s(a[0]),c(a[1],3)]);case`rrBit`:return Uo(a,2,e),sa[e]([s(a[0]),c(a[1],3)]);case`ioBit`:return Uo(a,2,e),sa[e]([c(a[0],5),c(a[1],3)]);case`noOperand`:return Uo(a,0,e),sa[e]([]);case`sBit`:return Uo(a,1,e),sa[e]([c(a[0],3)]);case`branchGeneric`:return Uo(a,2,e),sa[e]([c(a[0],3),u(a[1],7)]);case`branchFixedS`:return Uo(a,1,e),sa[e]([u(a[0],7)]);case`relJump`:return Uo(a,1,e),sa[e]([u(a[0],12)]);case`absJump`:return Uo(a,1,e),sa[e]([c(a[0],22)]);case`inOutIn`:return Uo(a,2,e),sa.IN([s(a[0]),c(a[1],6)]);case`inOutOut`:return Uo(a,2,e),sa.OUT([c(a[0],6),s(a[1])]);case`adiwSbiw`:return Uo(a,2,e),sa[e]([s(a[0]),c(a[1],6)]);case`movw`:return Uo(a,2,e),sa.MOVW([s(a[0]),s(a[1])]);case`ldsLoad`:return Uo(a,2,e),sa.LDS([s(a[0]),c(a[1],16)]);case`stsStore`:return Uo(a,2,e),sa.STS([c(a[0],16),s(a[1])]);case`zRd`:return Uo(a,2,e),sa[e]([l(a[0]),s(a[1])]);case`ld`:return Uo(a,2,e),sa.LD([s(a[0]),l(a[1])]);case`ldd`:return Uo(a,2,e),sa.LDD([s(a[0]),l(a[1])]);case`st`:return Uo(a,2,e),sa.ST([l(a[0]),s(a[1])]);case`std`:return Uo(a,2,e),sa.STD([l(a[0]),s(a[1])]);case`lpm`:return a.length===0?sa.LPM([]):(Uo(a,2,e),sa.LPM([s(a[0]),l(a[1])]));case`elpm`:return a.length===0?sa.ELPM([]):(Uo(a,2,e),sa.ELPM([s(a[0]),l(a[1])]));case`selfPair`:{Uo(a,1,e);let t=s(a[0]);return sa[{CLR:`EOR`,LSL:`ADD`,ROL:`ADC`,TST:`AND`}[e]]([t,t])}default:throw new wo(`internal: no parser for shape ${o}`)}}function Uo(e,t,n){if(e.length!==t)throw new wo(`${n}: expected ${t} operand(s), got ${e.length}`)}var Wo={right:0,up:131,down:307,left:481,select:741,none:1023},Go=class{program;cpu;ports;timers;adc;breakpoints=new Set;instructionsRetired=0;constructor(e){this.program=e,this.initPeripherals()}initPeripherals(){this.cpu=new fa(this.program,uo),this.cpu.SP=so,this.ports={};for(let[e,t]of Object.entries(po))this.ports[e]=new za(this.cpu,t);this.timers=bo.map(e=>new oo(this.cpu,e)),this.adc=new ka(this.cpu,So),this.adc.channelValues[0]=Wo.none/1024*5,this.instructionsRetired=0}reset(){this.initPeripherals()}setButton(e){this.adc.channelValues[0]=Wo[e]/1024*5}step(){ma(this.cpu),this.cpu.tick(),this.instructionsRetired++}run(e){for(let t=0;t<e;t++){if(t>0&&this.breakpoints.has(this.cpu.pc))return{hitBreakpoint:!0,ranInstructions:t};this.step()}return{hitBreakpoint:!1,ranInstructions:e}}},Ko={0:{port:`E`,bit:0},1:{port:`E`,bit:1},2:{port:`E`,bit:4},3:{port:`E`,bit:5},4:{port:`G`,bit:5},5:{port:`E`,bit:3},6:{port:`H`,bit:3},7:{port:`H`,bit:4},8:{port:`H`,bit:5},9:{port:`H`,bit:6},10:{port:`B`,bit:4},11:{port:`B`,bit:5},12:{port:`B`,bit:6},13:{port:`B`,bit:7},14:{port:`J`,bit:1},15:{port:`J`,bit:0},16:{port:`H`,bit:1},17:{port:`H`,bit:0},18:{port:`D`,bit:3},19:{port:`D`,bit:2},20:{port:`D`,bit:1},21:{port:`D`,bit:0},22:{port:`A`,bit:0},23:{port:`A`,bit:1},24:{port:`A`,bit:2},25:{port:`A`,bit:3},26:{port:`A`,bit:4},27:{port:`A`,bit:5},28:{port:`A`,bit:6},29:{port:`A`,bit:7},30:{port:`C`,bit:7},31:{port:`C`,bit:6},32:{port:`C`,bit:5},33:{port:`C`,bit:4},34:{port:`C`,bit:3},35:{port:`C`,bit:2},36:{port:`C`,bit:1},37:{port:`C`,bit:0},38:{port:`D`,bit:7},39:{port:`G`,bit:2},40:{port:`G`,bit:1},41:{port:`G`,bit:0},42:{port:`L`,bit:7},43:{port:`L`,bit:6},44:{port:`L`,bit:5},45:{port:`L`,bit:4},46:{port:`L`,bit:3},47:{port:`L`,bit:2},48:{port:`L`,bit:1},49:{port:`L`,bit:0},50:{port:`B`,bit:3},51:{port:`B`,bit:2},52:{port:`B`,bit:1},53:{port:`B`,bit:0},54:{port:`F`,bit:0},55:{port:`F`,bit:1},56:{port:`F`,bit:2},57:{port:`F`,bit:3},58:{port:`F`,bit:4},59:{port:`F`,bit:5},60:{port:`F`,bit:6},61:{port:`F`,bit:7},62:{port:`K`,bit:0},63:{port:`K`,bit:1},64:{port:`K`,bit:2},65:{port:`K`,bit:3},66:{port:`K`,bit:4},67:{port:`K`,bit:5},68:{port:`K`,bit:6},69:{port:`K`,bit:7}};function qo(e){let t=Ko[e];return{port:t.port,bit:t.bit}}var Jo={rs:qo(8),en:qo(9),d4:qo(4),d5:qo(5),d6:qo(6),d7:qo(7)},Yo=[0,64],Xo=40,Zo=class{ddram=new Uint8Array(80).fill(32);cgram=new Uint8Array(64);addressCounter=0;inCgramMode=!1;entryIncrement=!0;displayOn=!0;cursorOn=!1;blinkOn=!1;displayShift=0;lastEn=!1;nibbleHigh=null;ports;pins;onChange=()=>{};constructor(e,t=Jo){this.ports=e,this.pins=t;let n=new Set([t.rs.port,t.en.port,t.d4.port,t.d5.port,t.d6.port,t.d7.port]);for(let e of n)this.ports[e]?.addListener(()=>this.sample())}readBit(e){let t=this.ports[e.port];return t?t.pinState(e.bit)===Ia.High:!1}sample(){let e=this.readBit(this.pins.en);if(this.lastEn&&!e){let e=this.readBit(this.pins.rs),t=!!this.readBit(this.pins.d4)|(this.readBit(this.pins.d5)?2:0)|(this.readBit(this.pins.d6)?4:0)|(this.readBit(this.pins.d7)?8:0);this.latchNibble(e,t)}this.lastEn=e}latchNibble(e,t){if(this.nibbleHigh===null){this.nibbleHigh=t;return}let n=this.nibbleHigh<<4|t;this.nibbleHigh=null,e?this.writeData(n):this.writeCommand(n),this.onChange()}advanceAddress(e){if(this.inCgramMode){this.addressCounter=this.addressCounter+e&63;return}let t=this.addressCounter+e;e>0?t===40?t=64:t===104&&(t=0):t===63?t=39:t===-1&&(t=103),this.addressCounter=t}writeCommand(e){if(e&128)this.addressCounter=e&127,this.inCgramMode=!1;else if(e&64)this.addressCounter=e&63,this.inCgramMode=!0;else if(!(e&32))if(e&16){let t=(e&8)!=0,n=e&4?1:-1;t?this.displayShift=(this.displayShift+n+Xo)%Xo:this.advanceAddress(n)}else e&8?(this.displayOn=(e&4)!=0,this.cursorOn=(e&2)!=0,this.blinkOn=(e&1)!=0):e&4?this.entryIncrement=(e&2)!=0:e&2?(this.addressCounter=0,this.displayShift=0):e&1&&(this.ddram.fill(32),this.addressCounter=0,this.displayShift=0,this.entryIncrement=!0)}writeData(e){this.inCgramMode?this.cgram[this.addressCounter&63]=e:this.ddram[this.addressCounter&127]=e,this.advanceAddress(this.entryIncrement?1:-1)}getDisplayState(){let e=new Uint8Array(32);for(let t=0;t<2;t++)for(let n=0;n<16;n++){let r=(n+this.displayShift)%Xo;e[t*16+n]=this.ddram[Yo[t]+r]}let t=this.addressCounter,n=+(t>=64),r=(t-Yo[n]-this.displayShift+Xo)%Xo%16;return{characters:e,cursor:this.cursorOn,blink:this.blinkOn,cursorX:r,cursorY:n,displayOn:this.displayOn}}},Qo={"led-cycle-demo.asm":`; led-cycle-demo.asm
+`,"lcddefs.inc":`; ***
+; HD44780 LCD Driver for ATmega2560.
+; (DFRobot LCD Keypad Shield v1.1, Arduino Mega2560)
 ;
-; Minimal sanity-check program for the board's six LEDs. It has nothing to
-; do with the A2 assignment -- it just lights LED 01 through LED 06 in
-; order, one at a time, forever. Use it to confirm the LED-to-port wiring
-; in HardwarePanel.tsx (PORTB bits 1,3 and PORTL bits 1,3,5,7) is correct
-; before debugging the actual assignment code in a2-signaling.asm.
+; Title: 		LCDdefs.inc
+; Description: 	Conditional Assembly, Constant Definitions
+; Author: 		Keegan van der Laag (jkvander@uvic.ca)
+; Updated:		23 February 2015
 
-.cseg
-.org 0
+; ---
+;
+; Some code shamelessly adapted from the C implementation of an HD44780
+; driver by Peter Dannegger, posted to the AVR Freaks forum. The original
+; driver is available here:
+;
+; http://www.avrfreaks.net/forum/tutc-lcd-tutorial-1001?name=PNphpBB2&file=viewtopic&t=102296
 
-	; Vector 0 always jumps to the real entry point, same as
-	; examples/lcd/hello_world.asm -- keeps this safe to later grow into
-	; multiple .include'd files (interrupt vectors, shared drivers, etc.)
-	; without the entry point silently ending up mid-vector-table.
-	rjmp start
 
-.def temp=r16
+; Throws a warning if LCD_LIBONLY is not set before the #include in the program
+; using the driver. If LCD_LIBONLY is not set, the default program code for setup,
+; initialization, and main program loop will be assembled.
+#ifndef LCD_LIBONLY
+#message "LCD Driver loaded, LCD_LIBONLY not set. Running default program code."
+#endif
 
-start:
-	; Set up the stack.
-	ldi temp, low(RAMEND)
-	out SPL, temp
-	ldi temp, high(RAMEND)
-	out SPH, temp
+; Delay times for LCD commands. These are fairly conservative, but may need to be
+; adjusted for cheap HD44780 compatible controllers, or if you're implementing
+; this driver in antarctica. When in doubt, refer to the data sheet for your LCD
+; module.
+.equ LCD_DAT		=	50		; Execute time in microseconds for data commands
+.equ LCD_ENA		=	1		; Execute time in microseconds for clock pulse
+.equ LCD_CLEAR		=	2		; Execute time for longer commands in ms
 
-	; PORTB bits 1,3 and PORTL bits 1,3,5,7 drive the six LEDs; make them
-	; outputs and start with everything off.
-	ldi temp, (1 << DDB1) | (1 << DDB3)
-	out DDRB, temp
-	ldi temp, (1 << DDL1) | (1 << DDL3) | (1 << DDL5) | (1 << DDL7)
-	sts DDRL, temp
 
-	clr temp
-	out PORTB, temp
-	sts PORTL, temp
+; Set the bit-width of the stack pointer for your processor.
+; This determines how many bytes some subroutines will pop off the stack
+; to preserve return addresses.
+; You know, I don't actually know if other MCUs have wider SP registers.
+; This kind of just assumes that they don't. I guess we'll find out pretty
+; quick.
+.if 	RAMEND <	0x100
+.equ	SP_OFFSET = 2
+.else
+.equ 	SP_OFFSET = 3
+.endif
 
-main_loop:
-	; LED 01 (PORTB1)
-	sbi PORTB, 1
-	rcall delay
-	cbi PORTB, 1
 
-	; LED 02 (PORTB3)
-	sbi PORTB, 3
-	rcall delay
-	cbi PORTB, 3
+; ***
+; Register definitions used in this module.
 
-	; LED 03 (PORTL1)
-	ldi temp, (1 << 1)
-	sts PORTL, temp
-	rcall delay
+.def CREG	=	R18					; Command or data register used in routines
+.def DREG	=	R19					; Delay values passed to dly_ms and dly_us
+.def TEMP	=	R16					; Mnemonics for temporary values
+.def TEMP2	=	R17
+; ***
+; End of Driver Register Definitions
 
-	; LED 04 (PORTL3) -- writing the new mask also clears LED 03
-	ldi temp, (1 << 3)
-	sts PORTL, temp
-	rcall delay
 
-	; LED 05 (PORTL5)
-	ldi temp, (1 << 5)
-	sts PORTL, temp
-	rcall delay
+; ***
+; Exception Handling
+;
+; Handle cases where some things are defined, but not others.
+#ifdef LCD_SIZE
+	#ifndef LCD_ROW
+		#error "LCD_SIZE defined, LCD_ROW not set."
+	#elif (LCD_ROW > 4) | (LCD_ROW < 1) | (LCD_ROW == 3)
+		#error "LCD_ROW out of range. (Should be 1, 2, or 4.)"
+	#endif
 
-	; LED 06 (PORTL7)
-	ldi temp, (1 << 7)
-	sts PORTL, temp
-	rcall delay
+	#ifndef LCD_COLUMN
+		#error "LCD_SIZE defined, LCD_COLUMN not set."
 
-	clr temp
-	sts PORTL, temp
+	#elif LCD_ROW == 1
+		#if !(LCD_COLUMN == 8 | LCD_COLUMN == 16 | LCD_COLUMN == 20 | LCD_COLUMN == 40)
+			#error "LCD_COLUMN not valid for given LCD_ROW. (Must be 8, 16, 20, or 40 for LCD_ROW = 1)"
+		#endif
+	#elif LCD_ROW == 2
+		#if !(LCD_COLUMN == 8 | LCD_COLUMN == 12 | LCD_COLUMN == 16 | LCD_COLUMN == 20 | LCD_COLUMN == 24 | LCD_COLUMN == 40)
+			#error "LCD_COLUMN not valid for given LCD_ROW. (Must be 8, 12, 16, 20, 24, or 40 for LCD_ROW = 2)"
+		#endif
+	#elif LCD_ROW == 4
+		#if !(LCD_COLUMN == 16 | LCD_COLUMN == 20)
+			#error "LCD_COLUMN not valid for given LCD_ROW. (Must be 16, or 20 for LCD_ROW = 4)"
+		#endif
 
-	rjmp main_loop
+	#endif
+#endif
 
-; Busy-wait delay. a2-signaling.asm's triple-nested delay_busywait is tuned
-; for the real 16MHz chip (~0.2s); at this emulator's default "Normal" speed
-; (2000 instructions/frame) that works out to well over a minute per step,
-; which makes the cycle look frozen. This shallower loop instead targets
-; roughly a quarter second per step at "Normal" speed, so the cycle is
-; actually visible. Speed it up/down with the toolbar's speed selector.
-delay:
-	push r17
-	push r18
+#ifdef LCD_DISPLAY_SET
+	#ifndef LCD_SHOW_CURSOR
+		#error "LCD_DISPLAY_SET defined, LCD_SHOW_CURSOR not set."
+	#endif
+	#ifndef LCD_BLINK_CURSOR
+		#error "LCD_DISPLAY_SET defined, LCD_BLINK_CURSOR not set."
+	#endif
+	#ifndef LCD_DISPLAY_ON
+		#error "LCD_DISPLAY_SET defined, LCD_DISPLAY_ON not set."
+	#endif
+#endif
 
-	ldi r17, 60
-delay_loop1:
-	ldi r18, 255
-delay_loop2:
-	dec r18
-	brne delay_loop2
-	dec r17
-	brne delay_loop1
+#ifdef LCD_INTERFACE_SET
+	#ifndef LCD_INTERFACE_WIDTH
+		#error "LCD_INTERFACE_SET defined, LCD_INTERFACE_WIDTH not set."
+	#endif
+	#ifndef LCD_LINE_COUNT
+		#error "LCD_INTERFACE_SET defined, LCD_LINE_COUNT not set."
+	#endif
+	#ifndef LCD_FONT_SIZE
+		#error "LCD_INTERFACE_SET defined, LCD_FONT_SIZE not set."
+	#endif
+#endif
 
-	pop r18
-	pop r17
-	ret
+#ifdef LCD_CURSOR_SET
+	#ifndef LCD_CURSOR_DIR
+		#error "LCD_CURSOR_SET defined, LCD_CURSOR_DIR not set."
+	#endif
+	#ifndef LCD_DISPLAY_SHIFT
+		#error "LCD_CURSOR_SET defined, LCD_DISPLAY_SHIFT not set."
+	#endif
+#endif
+
+#ifdef LCD_SHIFT_SET
+	#ifndef LCD_SHIFT_DIR
+		#error "LCD_MOVE_SHIFT defined, LCD_SHIFT_DIR not set."
+	#endif
+	#ifndef LCD_MOVE_SHIFT
+		#error "LCD_SHIFT_SET defined, LCD_MOVE_SHIFT not set."
+	#endif
+#endif
+
+.ifdef LCD_INTERFACE_PORTS
+	.ifndef LCD_PORT_D4
+		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_D4 not set."
+	.elif LCD_PORT_D4 > IOEND
+		.error "LCD_PORT_D4 out of range. (Must be inside I/O Space)" 
+	.endif
+	.ifndef LCD_PORT_D5
+		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_D5 not set."
+	.elif LCD_PORT_D5 > IOEND
+		.error "LCD_PORT_D5 out of range. (Must be inside I/O Space)"
+	.endif
+	.ifndef LCD_PORT_D6
+		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_D6 not set."
+	.elif LCD_PORT_D6 > IOEND
+		.error "LCD_PORT_D6 out of range. (Must be inside I/O Space)"
+	.endif
+	.ifndef LCD_PORT_D7
+		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_D7 not set."
+	.elif LCD_PORT_D7 > IOEND
+		.error "LCD_PORT_D7 out of range. (Must be inside I/O Space)"
+	.endif
+	.ifndef LCD_PORT_RS
+		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_RS not set."
+	.elif LCD_PORT_RS > IOEND
+		.error "LCD_PORT_RS out of range. (Must be inside I/O Space)"
+	.endif
+	.ifndef LCD_PORT_ENA
+		.error "LCD_INTERFACE_PORTS defined, LCD_PORT_ENA not set."
+	.elif LCD_PORT_ENA > IOEND
+		.error "LCD_PORT_ENA out of range. (Must be inside I/O Space)"
+	.endif
+
+	.ifndef PIN_D4
+		.error "LCD_INTERFACE_PORTS defined, PIN_D4 not set."
+	.elif PIN_D4 > 7
+		.error "PIN_D4 out of range. (Must be between 0 and 7.)
+	.endif
+	.ifndef PIN_D5
+		.error "LCD_INTERFACE_PORTS defined, PIN_D5 not set."
+	.elif PIN_D5 > 7
+		.error "PIN_D5 out of range. (Must be between 0 and 7.)
+	.endif
+	.ifndef PIN_D6
+		.error "LCD_INTERFACE_PORTS defined, PIN_D6 not set."
+	.elif PIN_D6 > 7
+		.error "PIN_D6 out of range. (Must be between 0 and 7.)
+	.endif
+	.ifndef PIN_D7
+		.error "LCD_INTERFACE_PORTS defined, PIN_D7 not set."
+	.elif PIN_D7 > 7
+		.error "PIN_D7 out of range. (Must be between 0 and 7.)
+	.endif
+	.ifndef PIN_RS
+		.error "LCD_INTERFACE_PORTS defined, PIN_RS not set."
+	.elif PIN_RS > 7
+		.error "PIN_RS out of range. (Must be between 0 and 7.)
+	.endif
+	.ifndef PIN_ENA
+		.error "LCD_INTERFACE_PORTS defined, PIN_ENA not set."
+	.elif PIN_ENA > 7
+		.error "PIN_ENA out of range. (Must be between 0 and 7.)
+	.endif
+
+.endif
+
+
+
+; Definitions of constants for different LCD sizes.
+#if (LCD_ROW == 1 & LCD_COLUMN == 8)
+#define LCD_LINE1       0x80
+#endif
+
+#if (LCD_ROW == 1 & LCD_COLUMN == 16 )
+#define LCD_LINE1       0x80
+#endif
+
+#if (LCD_ROW == 1 & LCD_COLUMN == 20 )
+#define LCD_LINE1       0x80
+#endif
+
+#if (LCD_ROW == 1 & LCD_COLUMN == 40 )
+#define LCD_LINE1       0x80
+#endif
+
+#if (LCD_ROW == 2 & LCD_COLUMN == 8 )
+#define LCD_LINE1       0x80
+#define LCD_LINE2       (0x80 + 0x40)
+#endif
+
+#if (LCD_ROW == 2 & LCD_COLUMN == 12 )
+#define LCD_LINE1       0x80
+#define LCD_LINE2       (0x80 + 0x40)
+#endif
+
+#if (LCD_ROW == 2 & LCD_COLUMN == 16 )
+#define LCD_LINE1       0x80
+#define LCD_LINE2       (0x80 + 0x40)
+#endif
+
+#if (LCD_ROW == 2 & LCD_COLUMN == 20 )
+#define LCD_LINE1       0x80
+#define LCD_LINE2       (0x80 + 0x40)
+#endif
+
+#if (LCD_ROW == 2 & LCD_COLUMN == 24 )
+#define LCD_LINE1       0x80
+#define LCD_LINE2       (0x80 + 0x40)
+#endif
+
+#if (LCD_ROW == 2 & LCD_COLUMN == 40 )
+#define LCD_LINE1       0x80
+#define LCD_LINE2       (0x80 + 0x40)
+#endif
+
+#if (LCD_ROW == 4 & LCD_COLUMN == 16 )
+#define LCD_LINE1       0x80
+#define LCD_LINE2       (0x80 + 0x40)
+#define LCD_LINE3       (0x80 + 0x10)
+#define LCD_LINE4       (0x80 + 0x50)
+#endif
+
+#if (LCD_ROW == 4 & LCD_COLUMN == 20 )
+#define LCD_LINE1       0x80
+#define LCD_LINE2       (0x80 + 0x40)
+#define LCD_LINE3       (0x80 + 0x14)
+#define LCD_LINE4       (0x80 + 0x54)
+#endif
+
+; Maximum length of a null-terminated string that fills the LCD completely.
+; (Good for reserving memory for the LCD contents.)
+#define lcd_length      (LCD_ROW * LCD_COLUMN) + 1
+
+; Some constant definitions for Hitachi HD44780 Command instructions.
+; Can be used with lcd_cmd by pushing them onto the stack before calling.
+; For more details about the HD44780 instruction set and instruction format,
+; see the data sheet for the HD44780 from Hitachi.
+#define LCD_CMD_CLR			0x01
+#define LCD_CMD_HOM			0x02
+#define LCD_CMD_EMS     	0x04
+#define LCD_CMD_DSP     	0x08
+#define LCD_CMD_SHF     	0x10
+#define LCD_CMD_FNC     	0x20
+#define LCD_CMD_CGR     	0x40
+#define LCD_CMD_DDR     	0x80
+#define LCD_CMD_INI     	LCD_CMD_FNC + 0x10
+
+; Definitions of commands specific to display settings from driver.
+; These are used primarily in lcd_init
+#define LCD_CMD_FUNCTION_SET	LCD_CMD_FNC + (LCD_INTERFACE_WIDTH<<4) + (LCD_LINE_COUNT<<3) + (LCD_FONT_SIZE<<2)
+#define LCD_CMD_DISPLAY_MODE  LCD_CMD_DSP + (LCD_DISPLAY_ON<<2) + (LCD_SHOW_CURSOR<<1) + LCD_BLINK_CURSOR
+#define LCD_CMD_ENTRY_MODE    LCD_CMD_EMS + (LCD_CURSOR_DIR<<1) + (LCD_DISPLAY_SHIFT)
+#define LCD_CMD_SHIFT_DISPLAY LCD_CMD_SHF + (LCD_MOVE_SHIFT<<3) + (LCD_SHIFT_DIR)
+
+
+; ***
+; Port and Pin symbols for LCD_INTERFACE_PORTS. Uses symbols defined in
+; the Atmel partdef file for your MCU.
+
+; Port/Pin Labels for D4
+.if (LCD_PORT_D4 < 0x100)
+	.equ PORT_D4 = (LCD_PORT_D4) + 0x20
+	.equ PINS_D4 = (LCD_PORT_D4 - 2) + 0x20
+	.equ DDR_D4  = (LCD_PORT_D4 - 1) + 0x20
+.else
+	.equ PORT_D4 = LCD_PORT_D4
+	.equ PINS_D4 = LCD_PORT_D4 - 2
+	.equ DDR_D4  = LCD_PORT_D4 - 1
+.endif
+
+; Port/Pin Labels for D5
+.if (LCD_PORT_D5 < 0x100)
+	.equ PORT_D5 = (LCD_PORT_D5) + 0x20
+	.equ PINS_D5 = (LCD_PORT_D5 - 2) + 0x20
+	.equ DDR_D5  = (LCD_PORT_D5 - 1) + 0x20
+.else
+	.equ PORT_D5 = LCD_PORT_D5
+	.equ PINS_D5 = LCD_PORT_D5 - 2
+	.equ DDR_D5  = LCD_PORT_D5 - 1
+.endif
+
+; Port/Pin Labels for D6
+.if (LCD_PORT_D6 < 0x100)
+	.equ PORT_D6 = (LCD_PORT_D6) + 0x20
+	.equ PINS_D6 = (LCD_PORT_D6 - 2) + 0x20
+	.equ DDR_D6  = (LCD_PORT_D6 - 1) + 0x20
+.else
+	.equ PORT_D6 = LCD_PORT_D6
+	.equ PINS_D6 = LCD_PORT_D6 - 2
+	.equ DDR_D6  = LCD_PORT_D6 - 1
+.endif
+
+; Port/Pin Labels for D7
+.if (LCD_PORT_D7 < 0x100)
+	.equ PORT_D7 = (LCD_PORT_D7) + 0x20
+	.equ PINS_D7 = (LCD_PORT_D7 - 2) + 0x20
+	.equ DDR_D7  = (LCD_PORT_D7 - 1) + 0x20
+.else
+	.equ PORT_D7 = LCD_PORT_D7
+	.equ PINS_D7 = LCD_PORT_D7 - 2
+	.equ DDR_D7  = LCD_PORT_D7 - 1
+.endif
+
+; Port/Pin Labels for RS
+.if (LCD_PORT_RS < 0x100)
+	.equ PORT_RS = (LCD_PORT_RS) + 0x20
+	.equ PINS_RS = (LCD_PORT_RS - 2) + 0x20
+	.equ DDR_RS  = (LCD_PORT_RS - 1) + 0x20
+.else
+	.equ PORT_RS = LCD_PORT_RS
+	.equ PINS_RS = LCD_PORT_RS - 2
+	.equ DDR_RS  = LCD_PORT_RS - 1
+.endif
+
+; Port/Pin Labels for ENA
+.if (LCD_PORT_ENA < 0x100)
+	.equ PORT_ENA = (LCD_PORT_ENA) + 0x20
+	.equ PINS_ENA = (LCD_PORT_ENA - 2) + 0x20
+	.equ DDR_ENA  = (LCD_PORT_ENA - 1) + 0x20
+.else
+	.equ PORT_ENA = LCD_PORT_ENA
+	.equ PINS_ENA = LCD_PORT_ENA - 2
+	.equ DDR_ENA  = LCD_PORT_ENA - 1
+.endif
+`};function Ti(e){return wi[e.trim().toLowerCase().replace(/^["']|["']$/g,``)]??null}var Ei=class extends Error{};function I(e,t){let n=e.replace(/\s+/g,``);if(n.length!==16)throw new Ei(`Internal error: bad opcode pattern "${e}"`);let r={};for(let e of n)e!==`0`&&e!==`1`&&(r[e]=(r[e]||0)+1);let i={},a=0;for(let o=0;o<16;o++){let s=n[o],c;if(s===`0`||s===`1`)c=+(s===`1`);else{let n=t[s];if(n===void 0)throw new Ei(`Internal error: missing field '${s}' for pattern "${e}"`);let a=i[s]||0;c=n>>>r[s]-1-a&1,i[s]=a+1}a=a<<1|c}return a>>>0}function L(e,t,n,r,i){if(!Number.isInteger(t)||t<n||t>r)throw new Ei(`${i}: ${e}=${t} out of range [${n},${r}]`)}function Di(e,t,n){if(!e||e.kind!==`reg`)throw new Ei(`${t}: expected register for ${n}`);return e.n}function Oi(e,t,n){if(!e||e.kind!==`imm`)throw new Ei(`${t}: expected number for ${n}`);return e.n}function ki(e,t,n){if(e.length!==t)throw new Ei(`${n}: expected ${t} operand(s), got ${e.length}`)}function Ai(e,t){if(e===24)return 0;if(e===26)return 1;if(e===28)return 2;if(e===30)return 3;throw new Ei(`${t}: register pair must be r24/r26/r28/r30 (got r${e})`)}function ji(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rd`),i=Di(n[1],t,`Rr`);return L(`Rd`,r,0,31,t),L(`Rr`,i,0,31,t),[I(e,{d:r,r:i})]}}function Mi(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rd`),i=Di(n[1],t,`Rr`);return L(`Rd`,r,16,31,t),L(`Rr`,i,16,31,t),[I(e,{d:r-16,r:i-16})]}}function Ni(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rd`),i=Di(n[1],t,`Rr`);return L(`Rd`,r,16,23,t),L(`Rr`,i,16,23,t),[I(e,{d:r-16,r:i-16})]}}function Pi(e,t,n=!1){return r=>{ki(r,2,t);let i=Di(r[0],t,`Rd`),a=Oi(r[1],t,`K`);return L(`Rd`,i,16,31,t),L(`K`,a,0,255,t),n&&(a=255-a),[I(e,{d:i-16,K:a})]}}function Fi(e,t){return n=>{ki(n,1,t);let r=Di(n[0],t,`Rd`);return L(`Rd`,r,0,31,t),[I(e,{d:r})]}}function Ii(e,t){return n=>{ki(n,1,t);let r=Di(n[0],t,`Rd`);return L(`Rd`,r,16,31,t),[I(e,{d:r-16})]}}function Li(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rd`),i=Oi(n[1],t,`b`);return L(`Rd`,r,0,31,t),L(`b`,i,0,7,t),[I(e,{d:r,b:i})]}}function Ri(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rr`),i=Oi(n[1],t,`b`);return L(`Rr`,r,0,31,t),L(`b`,i,0,7,t),[I(e,{r,b:i})]}}function zi(e,t){return n=>{ki(n,2,t);let r=Oi(n[0],t,`A`),i=Oi(n[1],t,`b`);return L(`A`,r,0,31,t),L(`b`,i,0,7,t),[I(e,{A:r,b:i})]}}function Bi(e,t){return n=>(ki(n,0,t),[I(e,{})])}function Vi(e,t){return n=>{ki(n,1,t);let r=Oi(n[0],t,`s`);return L(`s`,r,0,7,t),[I(e,{s:r})]}}function Hi(e,t,n){return r=>{ki(r,1,n);let i=Oi(r[0],n,`k`);return L(`k`,i,-64,63,n),[I(e,{k:i&127,s:t})]}}function Ui(e,t){return n=>{ki(n,2,t);let r=Oi(n[0],t,`s`),i=Oi(n[1],t,`k`);return L(`s`,r,0,7,t),L(`k`,i,-64,63,t),[I(e,{k:i&127,s:r})]}}function Wi(e,t){return n=>{ki(n,1,t);let r=Oi(n[0],t,`k`);return L(`k`,r,-2048,2047,t),[I(e,{k:r&4095})]}}function Gi(e,t){return n=>{ki(n,1,t);let r=Oi(n[0],t,`k`);return L(`k`,r,0,4194303,t),[I(e,{k:r>>>16&63}),r&65535]}}function Ki(e,t,n){let r=n===`reg-io`?`d`:`r`;return i=>{ki(i,2,t);let[a,o]=i,s=n===`reg-io`?Di(a,t,`Rd`):Di(o,t,`Rr`),c=Oi(n===`reg-io`?o:a,t,`A`);return L(`Rd/Rr`,s,0,31,t),L(`A`,c,0,63,t),[I(e,{[r]:s,A:c})]}}function qi(e,t){return n=>{ki(n,2,t);let r=Di(n[0],t,`Rd`),i=Oi(n[1],t,`K`),a=Ai(r,t);return L(`K`,i,0,63,t),[I(e,{d:a,K:i})]}}function Ji(){let e=`MOVW`;return t=>{ki(t,2,e);let n=Di(t[0],e,`Rd`),r=Di(t[1],e,`Rr`);if(n%2!=0||n<0||n>30)throw new Ei(`${e}: Rd must be even, 0..30 (got r${n})`);if(r%2!=0||r<0||r>30)throw new Ei(`${e}: Rr must be even, 0..30 (got r${r})`);return[I(`0000 0001 dddd rrrr`,{d:n/2,r:r/2})]}}function Yi(e,t){return n=>{ki(n,2,e);let r=t===`load`?n[0]:n[1],i=t===`load`?n[1]:n[0],a=Di(r,e,`Rd/Rr`),o=Oi(i,e,`k`);return L(`Rd/Rr`,a,0,31,e),L(`k`,o,0,65535,e),[I(t===`load`?`1001 000d dddd 0000`:`1001 001d dddd 0000`,{d:a}),o&65535]}}function Xi(e,t){return n=>{ki(n,2,t);let r=n[0];if(r.kind!==`ptr`||r.base!==`Z`||r.mode!==`plain`)throw new Ei(`${t}: first operand must be Z`);let i=Di(n[1],t,`Rd`);return L(`Rd`,i,0,31,t),[I(e,{r:i})]}}function Zi(e,t){if(!e||e.kind!==`ptr`)throw new Ei(`${t}: expected pointer operand (X/Y/Z)`);return e}var Qi={"X,plain":{pattern:`1001 000d dddd 1100`},"X,postinc":{pattern:`1001 000d dddd 1101`},"X,predec":{pattern:`1001 000d dddd 1110`},"Y,plain":{pattern:`1000 000d dddd 1000`},"Y,postinc":{pattern:`1001 000d dddd 1001`},"Y,predec":{pattern:`1001 000d dddd 1010`},"Y,disp":{pattern:`10q0 qq0d dddd 1qqq`,needsQ:!0},"Z,plain":{pattern:`1000 000d dddd 0000`},"Z,postinc":{pattern:`1001 000d dddd 0001`},"Z,predec":{pattern:`1001 000d dddd 0010`},"Z,disp":{pattern:`10q0 qq0d dddd 0qqq`,needsQ:!0}};function $i(e){ki(e,2,`LD`);let t=Di(e[0],`LD`,`Rd`),n=Zi(e[1],`LD`);L(`Rd`,t,0,31,`LD`);let r=`${n.base},${n.mode}`,i=Qi[r];if(!i)throw new Ei(`LD: addressing mode ${r} is not valid`);let a={d:t};if(i.needsQ){let e=n.disp??0;L(`q`,e,0,63,`LD`),a.q=e}return[I(i.pattern,a)]}var ea={"X,plain":{pattern:`1001 001r rrrr 1100`},"X,postinc":{pattern:`1001 001r rrrr 1101`},"X,predec":{pattern:`1001 001r rrrr 1110`},"Y,plain":{pattern:`1000 001r rrrr 1000`},"Y,postinc":{pattern:`1001 001r rrrr 1001`},"Y,predec":{pattern:`1001 001r rrrr 1010`},"Y,disp":{pattern:`10q0 qq1r rrrr 1qqq`,needsQ:!0},"Z,plain":{pattern:`1000 001r rrrr 0000`},"Z,postinc":{pattern:`1001 001r rrrr 0001`},"Z,predec":{pattern:`1001 001r rrrr 0010`},"Z,disp":{pattern:`10q0 qq1r rrrr 0qqq`,needsQ:!0}};function ta(e){ki(e,2,`ST`);let t=Zi(e[0],`ST`),n=Di(e[1],`ST`,`Rr`);L(`Rr`,n,0,31,`ST`);let r=`${t.base},${t.mode}`,i=ea[r];if(!i)throw new Ei(`ST: addressing mode ${r} is not valid`);let a={r:n};if(i.needsQ){let e=t.disp??0;L(`q`,e,0,63,`ST`),a.q=e}return[I(i.pattern,a)]}function na(e){ki(e,2,`LDD`);let t=Di(e[0],`LDD`,`Rd`),n=Zi(e[1],`LDD`);if(L(`Rd`,t,0,31,`LDD`),n.mode!==`disp`||n.base!==`Y`&&n.base!==`Z`)throw new Ei(`LDD: expected Y+q or Z+q`);let r=Qi[`${n.base},disp`],i=n.disp??0;return L(`q`,i,0,63,`LDD`),[I(r.pattern,{d:t,q:i})]}function ra(e){ki(e,2,`STD`);let t=Zi(e[0],`STD`),n=Di(e[1],`STD`,`Rr`);if(L(`Rr`,n,0,31,`STD`),t.mode!==`disp`||t.base!==`Y`&&t.base!==`Z`)throw new Ei(`STD: expected Y+q or Z+q`);let r=ea[`${t.base},disp`],i=t.disp??0;return L(`q`,i,0,63,`STD`),[I(r.pattern,{r:n,q:i})]}function ia(e){if(e.length===0)return[I(`1001 0101 1100 1000`,{})];ki(e,2,`LPM`);let t=Di(e[0],`LPM`,`Rd`),n=Zi(e[1],`LPM`);if(L(`Rd`,t,0,31,`LPM`),n.base!==`Z`||n.mode!==`plain`&&n.mode!==`postinc`)throw new Ei(`LPM: expected Z or Z+`);return[I(n.mode===`plain`?`1001 000d dddd 0100`:`1001 000d dddd 0101`,{d:t})]}function aa(e){let t=`ELPM`;if(e.length===0)return[I(`1001 0101 1101 1000`,{})];ki(e,2,t);let n=Di(e[0],t,`Rd`),r=Zi(e[1],t);if(L(`Rd`,n,0,31,t),r.base!==`Z`||r.mode!==`plain`&&r.mode!==`postinc`)throw new Ei(`ELPM: expected Z or Z+`);return[I(r.mode===`plain`?`1001 000d dddd 0110`:`1001 000d dddd 0111`,{d:n})]}function oa(e,t){return n=>(ki(n,0,t),[I(e,{})])}var sa={ADC:ji(`0001 11rd dddd rrrr`,`ADC`),ADD:ji(`0000 11rd dddd rrrr`,`ADD`),ADIW:qi(`1001 0110 KKdd KKKK`,`ADIW`),AND:ji(`0010 00rd dddd rrrr`,`AND`),ANDI:Pi(`0111 KKKK dddd KKKK`,`ANDI`),ASR:Fi(`1001 010d dddd 0101`,`ASR`),BCLR:Vi(`1001 0100 1sss 1000`,`BCLR`),BLD:Li(`1111 100d dddd 0bbb`,`BLD`),BRBC:Ui(`1111 01kk kkkk ksss`,`BRBC`),BRBS:Ui(`1111 00kk kkkk ksss`,`BRBS`),BRCC:Hi(`1111 01kk kkkk k000`,0,`BRCC`),BRCS:Hi(`1111 00kk kkkk k000`,0,`BRCS`),BREAK:Bi(`1001 0101 1001 1000`,`BREAK`),BREQ:Hi(`1111 00kk kkkk k001`,1,`BREQ`),BRGE:Hi(`1111 01kk kkkk k100`,4,`BRGE`),BRHC:Hi(`1111 01kk kkkk k101`,5,`BRHC`),BRHS:Hi(`1111 00kk kkkk k101`,5,`BRHS`),BRID:Hi(`1111 01kk kkkk k111`,7,`BRID`),BRIE:Hi(`1111 00kk kkkk k111`,7,`BRIE`),BRLO:Hi(`1111 00kk kkkk k000`,0,`BRLO`),BRLT:Hi(`1111 00kk kkkk k100`,4,`BRLT`),BRMI:Hi(`1111 00kk kkkk k010`,2,`BRMI`),BRNE:Hi(`1111 01kk kkkk k001`,1,`BRNE`),BRPL:Hi(`1111 01kk kkkk k010`,2,`BRPL`),BRSH:Hi(`1111 01kk kkkk k000`,0,`BRSH`),BRTC:Hi(`1111 01kk kkkk k110`,6,`BRTC`),BRTS:Hi(`1111 00kk kkkk k110`,6,`BRTS`),BRVC:Hi(`1111 01kk kkkk k011`,3,`BRVC`),BRVS:Hi(`1111 00kk kkkk k011`,3,`BRVS`),BSET:Vi(`1001 0100 0sss 1000`,`BSET`),BST:Li(`1111 101d dddd 0bbb`,`BST`),CALL:Gi(`1001 010k kkkk 111k`,`CALL`),CBI:zi(`1001 1000 AAAA Abbb`,`CBI`),CBR:Pi(`0111 KKKK dddd KKKK`,`CBR`,!0),CLR:ji(`0010 01rd dddd rrrr`,`CLR`),COM:Fi(`1001 010d dddd 0000`,`COM`),CP:ji(`0001 01rd dddd rrrr`,`CP`),CPC:ji(`0000 01rd dddd rrrr`,`CPC`),CPI:Pi(`0011 KKKK dddd KKKK`,`CPI`),CPSE:ji(`0001 00rd dddd rrrr`,`CPSE`),DEC:Fi(`1001 010d dddd 1010`,`DEC`),EICALL:oa(`1001 0101 0001 1001`,`EICALL`),EIJMP:oa(`1001 0100 0001 1001`,`EIJMP`),ELPM:aa,EOR:ji(`0010 01rd dddd rrrr`,`EOR`),FMUL:Ni(`0000 0011 0ddd 1rrr`,`FMUL`),FMULS:Ni(`0000 0011 1ddd 0rrr`,`FMULS`),FMULSU:Ni(`0000 0011 1ddd 1rrr`,`FMULSU`),ICALL:oa(`1001 0101 0000 1001`,`ICALL`),IJMP:oa(`1001 0100 0000 1001`,`IJMP`),IN:Ki(`1011 0AAd dddd AAAA`,`IN`,`reg-io`),INC:Fi(`1001 010d dddd 0011`,`INC`),JMP:Gi(`1001 010k kkkk 110k`,`JMP`),LAC:Xi(`1001 001r rrrr 0110`,`LAC`),LAS:Xi(`1001 001r rrrr 0101`,`LAS`),LAT:Xi(`1001 001r rrrr 0111`,`LAT`),LD:$i,LDD:na,LDI:Pi(`1110 KKKK dddd KKKK`,`LDI`),LDS:Yi(`LDS`,`load`),LPM:ia,LSL:ji(`0000 11dd dddd dddd`,`LSL`),LSR:Fi(`1001 010d dddd 0110`,`LSR`),MOV:ji(`0010 11rd dddd rrrr`,`MOV`),MOVW:Ji(),MUL:ji(`1001 11rd dddd rrrr`,`MUL`),MULS:Mi(`0000 0010 dddd rrrr`,`MULS`),MULSU:Ni(`0000 0011 0ddd 0rrr`,`MULSU`),NEG:Fi(`1001 010d dddd 0001`,`NEG`),NOP:Bi(`0000 0000 0000 0000`,`NOP`),OR:ji(`0010 10rd dddd rrrr`,`OR`),ORI:Pi(`0110 KKKK dddd KKKK`,`ORI`),OUT:Ki(`1011 1AAr rrrr AAAA`,`OUT`,`io-reg`),POP:Fi(`1001 000d dddd 1111`,`POP`),PUSH:Fi(`1001 001d dddd 1111`,`PUSH`),RCALL:Wi(`1101 kkkk kkkk kkkk`,`RCALL`),RET:Bi(`1001 0101 0000 1000`,`RET`),RETI:Bi(`1001 0101 0001 1000`,`RETI`),RJMP:Wi(`1100 kkkk kkkk kkkk`,`RJMP`),ROL:ji(`0001 11dd dddd dddd`,`ROL`),ROR:Fi(`1001 010d dddd 0111`,`ROR`),SBC:ji(`0000 10rd dddd rrrr`,`SBC`),SBCI:Pi(`0100 KKKK dddd KKKK`,`SBCI`),SBI:zi(`1001 1010 AAAA Abbb`,`SBI`),SBIC:zi(`1001 1001 AAAA Abbb`,`SBIC`),SBIS:zi(`1001 1011 AAAA Abbb`,`SBIS`),SBIW:qi(`1001 0111 KKdd KKKK`,`SBIW`),SBR:Pi(`0110 KKKK dddd KKKK`,`SBR`),SBRC:Ri(`1111 110r rrrr 0bbb`,`SBRC`),SBRS:Ri(`1111 111r rrrr 0bbb`,`SBRS`),SER:Ii(`1110 1111 dddd 1111`,`SER`),SLEEP:Bi(`1001 0101 1000 1000`,`SLEEP`),ST:ta,STD:ra,STS:Yi(`STS`,`store`),SUB:ji(`0001 10rd dddd rrrr`,`SUB`),SUBI:Pi(`0101 KKKK dddd KKKK`,`SUBI`),SWAP:Fi(`1001 010d dddd 0010`,`SWAP`),TST:ji(`0010 00dd dddd dddd`,`TST`),WDR:Bi(`1001 0101 1010 1000`,`WDR`),XCH:Xi(`1001 001r rrrr 0100`,`XCH`)},ca={SEC:{set:!0,s:0},CLC:{set:!1,s:0},SEZ:{set:!0,s:1},CLZ:{set:!1,s:1},SEN:{set:!0,s:2},CLN:{set:!1,s:2},SEV:{set:!0,s:3},CLV:{set:!1,s:3},SES:{set:!0,s:4},CLS:{set:!1,s:4},SEH:{set:!0,s:5},CLH:{set:!1,s:5},SET:{set:!0,s:6},CLT:{set:!1,s:6},SEI:{set:!0,s:7},CLI:{set:!1,s:7}};function la(e,t){let n=e.dataView.getUint16(93,!0);e.data[n]=e.pc&255,e.data[n-1]=e.pc>>8&255,e.pc22Bits&&(e.data[n-2]=e.pc>>16&255),e.dataView.setUint16(93,n-(e.pc22Bits?3:2),!0),e.data[95]&=127,e.cycles+=2,e.pc=t}var ua=256,da=128,fa=class{constructor(e,t=8192){this.progMem=e,this.sramBytes=t,this.data=new Uint8Array(this.sramBytes+ua),this.data16=new Uint16Array(this.data.buffer),this.dataView=new DataView(this.data.buffer),this.progBytes=new Uint8Array(this.progMem.buffer),this.readHooks=[],this.writeHooks=[],this.pendingInterrupts=Array(da),this.nextClockEvent=null,this.clockEventPool=[],this.pc22Bits=this.progBytes.length>131072,this.gpioPorts=new Set,this.gpioByPort=[],this.onWatchdogReset=()=>{},this.pc=0,this.cycles=0,this.nextInterrupt=-1,this.maxInterrupt=0,this.reset()}reset(){this.SP=this.data.length-1,this.pc=0,this.pendingInterrupts.fill(null),this.nextInterrupt=-1,this.nextClockEvent=null}readData(e){return e>=32&&this.readHooks[e]?this.readHooks[e](e):this.data[e]}writeData(e,t,n=255){let r=this.writeHooks[e];r&&r(t,this.data[e],e,n)||(this.data[e]=t)}get SP(){return this.dataView.getUint16(93,!0)}set SP(e){this.dataView.setUint16(93,e,!0)}get SREG(){return this.data[95]}get interruptsEnabled(){return!!(this.SREG&128)}setInterruptFlag(e){let{flagRegister:t,flagMask:n,enableRegister:r,enableMask:i}=e;e.inverseFlag?this.data[t]&=~n:this.data[t]|=n,this.data[r]&i&&this.queueInterrupt(e)}updateInterruptEnable(e,t){let{enableMask:n,flagRegister:r,flagMask:i,inverseFlag:a}=e;if(t&n){let t=this.data[r]&i;(a?!t:t)&&this.queueInterrupt(e)}else this.clearInterrupt(e,!1)}queueInterrupt(e){let{address:t}=e;this.pendingInterrupts[t]=e,(this.nextInterrupt===-1||this.nextInterrupt>t)&&(this.nextInterrupt=t),t>this.maxInterrupt&&(this.maxInterrupt=t)}clearInterrupt({address:e,flagRegister:t,flagMask:n},r=!0){r&&(this.data[t]&=~n);let{pendingInterrupts:i,maxInterrupt:a}=this;if(i[e]&&(i[e]=null,this.nextInterrupt===e)){this.nextInterrupt=-1;for(let t=e+1;t<=a;t++)if(i[t]){this.nextInterrupt=t;break}}}clearInterruptByFlag(e,t){let{flagRegister:n,flagMask:r}=e;t&r&&(this.data[n]&=~r,this.clearInterrupt(e))}addClockEvent(e,t){let{clockEventPool:n}=this;t=this.cycles+Math.max(1,t);let r=n.pop()??{cycles:t,callback:e,next:null};r.cycles=t,r.callback=e;let{nextClockEvent:i}=this,a=null;for(;i&&i.cycles<t;)a=i,i=i.next;return a?(a.next=r,r.next=i):(this.nextClockEvent=r,r.next=i),e}updateClockEvent(e,t){return this.clearClockEvent(e)?(this.addClockEvent(e,t),!0):!1}clearClockEvent(e){let{nextClockEvent:t}=this;if(!t)return!1;let{clockEventPool:n}=this,r=null;for(;t;){if(t.callback===e)return r?r.next=t.next:this.nextClockEvent=t.next,n.length<10&&n.push(t),!0;r=t,t=t.next}return!1}tick(){let{nextClockEvent:e}=this;e&&e.cycles<=this.cycles&&(e.callback(),this.nextClockEvent=e.next,this.clockEventPool.length<10&&this.clockEventPool.push(e));let{nextInterrupt:t}=this;if(this.interruptsEnabled&&t>=0){let e=this.pendingInterrupts[t];la(this,e.address),e.constant||this.clearInterrupt(e)}}};function pa(e){return(e&65039)==36864||(e&65039)==37376||(e&65038)==37902||(e&65038)==37900}function ma(e){let t=e.progMem[e.pc];if((t&64512)==7168){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=n+r+(e.data[95]&1),a=i&255;e.data[(t&496)>>4]=a;let o=e.data[95]&192;o|=a?0:2,o|=128&a?4:0,o|=(a^r)&(n^a)&128?8:0,o|=o>>2&1^o>>3&1?16:0,o|=i&256?1:0,o|=1&(n&r|r&~a|~a&n)?32:0,e.data[95]=o}else if((t&64512)==3072){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=n+r&255;e.data[(t&496)>>4]=i;let a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=(i^r)&(i^n)&128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=n+r&256?1:0,a|=1&(n&r|r&~i|~i&n)?32:0,e.data[95]=a}else if((t&65280)==38400){let n=2*((t&48)>>4)+24,r=e.dataView.getUint16(n,!0),i=r+(t&15|(t&192)>>2)&65535;e.dataView.setUint16(n,i,!0);let a=e.data[95]&224;a|=i?0:2,a|=32768&i?4:0,a|=~r&i&32768?8:0,a|=a>>2&1^a>>3&1?16:0,a|=~i&r&32768?1:0,e.data[95]=a,e.cycles++}else if((t&64512)==8192){let n=e.data[(t&496)>>4]&e.data[t&15|(t&512)>>5];e.data[(t&496)>>4]=n;let r=e.data[95]&225;r|=n?0:2,r|=128&n?4:0,r|=r>>2&1^r>>3&1?16:0,e.data[95]=r}else if((t&61440)==28672){let n=e.data[((t&240)>>4)+16]&(t&15|(t&3840)>>4);e.data[((t&240)>>4)+16]=n;let r=e.data[95]&225;r|=n?0:2,r|=128&n?4:0,r|=r>>2&1^r>>3&1?16:0,e.data[95]=r}else if((t&65039)==37893){let n=e.data[(t&496)>>4],r=n>>>1|128&n;e.data[(t&496)>>4]=r;let i=e.data[95]&224;i|=r?0:2,i|=128&r?4:0,i|=n&1,i|=i>>2&1^i&1?8:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if((t&65423)==38024)e.data[95]&=~(1<<((t&112)>>4));else if((t&65032)==63488){let n=t&7,r=(t&496)>>4;e.data[r]=~(1<<n)&e.data[r]|(e.data[95]>>6&1)<<n}else if((t&64512)==62464)e.data[95]&1<<(t&7)||(e.pc+=((t&504)>>3)-(t&512?64:0),e.cycles++);else if((t&64512)==61440)e.data[95]&1<<(t&7)&&(e.pc+=((t&504)>>3)-(t&512?64:0),e.cycles++);else if((t&65423)==37896)e.data[95]|=1<<((t&112)>>4);else if((t&65032)==64e3){let n=e.data[(t&496)>>4],r=t&7;e.data[95]=e.data[95]&191|(n>>r&1?64:0)}else if((t&65038)==37902){let n=e.progMem[e.pc+1]|(t&1)<<16|(t&496)<<13,r=e.pc+2,i=e.dataView.getUint16(93,!0),{pc22Bits:a}=e;e.data[i]=255&r,e.data[i-1]=r>>8&255,a&&(e.data[i-2]=r>>16&255),e.dataView.setUint16(93,i-(a?3:2),!0),e.pc=n-1,e.cycles+=a?4:3}else if((t&65280)==38912){let n=t&248,r=t&7,i=e.readData((n>>3)+32),a=1<<r;e.writeData((n>>3)+32,i&~a,a)}else if((t&65039)==37888){let n=(t&496)>>4,r=255-e.data[n];e.data[n]=r;let i=e.data[95]&225|1;i|=r?0:2,i|=128&r?4:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if((t&64512)==5120){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=n-r,a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=(n^r)&(n^i)&128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=+(r>n),a|=1&(~n&r|r&i|i&~n)?32:0,e.data[95]=a}else if((t&64512)==1024){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=e.data[95],a=n-r-(i&1);i=i&192|(!a&&i>>1&1?2:0)|r+(i&1)>n,i|=128&a?4:0,i|=(n^r)&(n^a)&128?8:0,i|=i>>2&1^i>>3&1?16:0,i|=1&(~n&r|r&a|a&~n)?32:0,e.data[95]=i}else if((t&61440)==12288){let n=e.data[((t&240)>>4)+16],r=t&15|(t&3840)>>4,i=n-r,a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=(n^r)&(n^i)&128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=+(r>n),a|=1&(~n&r|r&i|i&~n)?32:0,e.data[95]=a}else if((t&64512)==4096){if(e.data[(t&496)>>4]===e.data[t&15|(t&512)>>5]){let t=e.progMem[e.pc+1],n=pa(t)?2:1;e.pc+=n,e.cycles+=n}}else if((t&65039)==37898){let n=e.data[(t&496)>>4],r=n-1;e.data[(t&496)>>4]=r;let i=e.data[95]&225;i|=r?0:2,i|=128&r?4:0,i|=n===128?8:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if(t===38169){let t=e.pc+1,n=e.dataView.getUint16(93,!0),r=e.data[92];e.data[n]=t&255,e.data[n-1]=t>>8&255,e.data[n-2]=t>>16&255,e.dataView.setUint16(93,n-3,!0),e.pc=(r<<16|e.dataView.getUint16(30,!0))-1,e.cycles+=3}else if(t===37913)e.pc=(e.data[92]<<16|e.dataView.getUint16(30,!0))-1,e.cycles++;else if(t===38360){let t=e.data[91];e.data[0]=e.progBytes[t<<16|e.dataView.getUint16(30,!0)],e.cycles+=2}else if((t&65039)==36870){let n=e.data[91];e.data[(t&496)>>4]=e.progBytes[n<<16|e.dataView.getUint16(30,!0)],e.cycles+=2}else if((t&65039)==36871){let n=e.data[91],r=e.dataView.getUint16(30,!0);e.data[(t&496)>>4]=e.progBytes[n<<16|r],e.dataView.setUint16(30,r+1,!0),r===65535&&(e.data[91]=(n+1)%(e.progBytes.length>>16)),e.cycles+=2}else if((t&64512)==9216){let n=e.data[(t&496)>>4]^e.data[t&15|(t&512)>>5];e.data[(t&496)>>4]=n;let r=e.data[95]&225;r|=n?0:2,r|=128&n?4:0,r|=r>>2&1^r>>3&1?16:0,e.data[95]=r}else if((t&65416)==776){let n=e.data[((t&112)>>4)+16],r=e.data[(t&7)+16],i=n*r<<1;e.dataView.setUint16(0,i,!0),e.data[95]=e.data[95]&252|(65535&i?0:2)|(n*r&32768?1:0),e.cycles++}else if((t&65416)==896){let n=e.dataView.getInt8(((t&112)>>4)+16),r=e.dataView.getInt8((t&7)+16),i=n*r<<1;e.dataView.setInt16(0,i,!0),e.data[95]=e.data[95]&252|(65535&i?0:2)|(n*r&32768?1:0),e.cycles++}else if((t&65416)==904){let n=e.dataView.getInt8(((t&112)>>4)+16),r=e.data[(t&7)+16],i=n*r<<1;e.dataView.setInt16(0,i,!0),e.data[95]=e.data[95]&252|(65535&i?2:0)|(n*r&32768?1:0),e.cycles++}else if(t===38153){let t=e.pc+1,n=e.dataView.getUint16(93,!0),{pc22Bits:r}=e;e.data[n]=t&255,e.data[n-1]=t>>8&255,r&&(e.data[n-2]=t>>16&255),e.dataView.setUint16(93,n-(r?3:2),!0),e.pc=e.dataView.getUint16(30,!0)-1,e.cycles+=r?3:2}else if(t===37897)e.pc=e.dataView.getUint16(30,!0)-1,e.cycles++;else if((t&63488)==45056){let n=e.readData((t&15|(t&1536)>>5)+32);e.data[(t&496)>>4]=n}else if((t&65039)==37891){let n=e.data[(t&496)>>4],r=n+1&255;e.data[(t&496)>>4]=r;let i=e.data[95]&225;i|=r?0:2,i|=128&r?4:0,i|=n===127?8:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if((t&65038)==37900)e.pc=(e.progMem[e.pc+1]|(t&1)<<16|(t&496)<<13)-1,e.cycles+=2;else if((t&65039)==37382){let n=(t&496)>>4,r=e.data[n],i=e.readData(e.dataView.getUint16(30,!0));e.writeData(e.dataView.getUint16(30,!0),i&255-r),e.data[n]=i}else if((t&65039)==37381){let n=(t&496)>>4,r=e.data[n],i=e.readData(e.dataView.getUint16(30,!0));e.writeData(e.dataView.getUint16(30,!0),i|r),e.data[n]=i}else if((t&65039)==37383){let n=e.data[(t&496)>>4],r=e.readData(e.dataView.getUint16(30,!0));e.writeData(e.dataView.getUint16(30,!0),n^r),e.data[(t&496)>>4]=r}else if((t&61440)==57344)e.data[((t&240)>>4)+16]=t&15|(t&3840)>>4;else if((t&65039)==36864){e.cycles++;let n=e.readData(e.progMem[e.pc+1]);e.data[(t&496)>>4]=n,e.pc++}else if((t&65039)==36876)e.cycles++,e.data[(t&496)>>4]=e.readData(e.dataView.getUint16(26,!0));else if((t&65039)==36877){let n=e.dataView.getUint16(26,!0);e.cycles++,e.data[(t&496)>>4]=e.readData(n),e.dataView.setUint16(26,n+1,!0)}else if((t&65039)==36878){let n=e.dataView.getUint16(26,!0)-1;e.dataView.setUint16(26,n,!0),e.cycles++,e.data[(t&496)>>4]=e.readData(n)}else if((t&65039)==32776)e.cycles++,e.data[(t&496)>>4]=e.readData(e.dataView.getUint16(28,!0));else if((t&65039)==36873){let n=e.dataView.getUint16(28,!0);e.cycles++,e.data[(t&496)>>4]=e.readData(n),e.dataView.setUint16(28,n+1,!0)}else if((t&65039)==36874){let n=e.dataView.getUint16(28,!0)-1;e.dataView.setUint16(28,n,!0),e.cycles++,e.data[(t&496)>>4]=e.readData(n)}else if((t&53768)==32776&&t&7|(t&3072)>>7|(t&8192)>>8)e.cycles++,e.data[(t&496)>>4]=e.readData(e.dataView.getUint16(28,!0)+(t&7|(t&3072)>>7|(t&8192)>>8));else if((t&65039)==32768)e.cycles++,e.data[(t&496)>>4]=e.readData(e.dataView.getUint16(30,!0));else if((t&65039)==36865){let n=e.dataView.getUint16(30,!0);e.cycles++,e.data[(t&496)>>4]=e.readData(n),e.dataView.setUint16(30,n+1,!0)}else if((t&65039)==36866){let n=e.dataView.getUint16(30,!0)-1;e.dataView.setUint16(30,n,!0),e.cycles++,e.data[(t&496)>>4]=e.readData(n)}else if((t&53768)==32768&&t&7|(t&3072)>>7|(t&8192)>>8)e.cycles++,e.data[(t&496)>>4]=e.readData(e.dataView.getUint16(30,!0)+(t&7|(t&3072)>>7|(t&8192)>>8));else if(t===38344)e.data[0]=e.progBytes[e.dataView.getUint16(30,!0)],e.cycles+=2;else if((t&65039)==36868)e.data[(t&496)>>4]=e.progBytes[e.dataView.getUint16(30,!0)],e.cycles+=2;else if((t&65039)==36869){let n=e.dataView.getUint16(30,!0);e.data[(t&496)>>4]=e.progBytes[n],e.dataView.setUint16(30,n+1,!0),e.cycles+=2}else if((t&65039)==37894){let n=e.data[(t&496)>>4],r=n>>>1;e.data[(t&496)>>4]=r;let i=e.data[95]&224;i|=r?0:2,i|=n&1,i|=i>>2&1^i&1?8:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if((t&64512)==11264)e.data[(t&496)>>4]=e.data[t&15|(t&512)>>5];else if((t&65280)==256){let n=2*(t&15),r=2*((t&240)>>4);e.data[r]=e.data[n],e.data[r+1]=e.data[n+1]}else if((t&64512)==39936){let n=e.data[(t&496)>>4]*e.data[t&15|(t&512)>>5];e.dataView.setUint16(0,n,!0),e.data[95]=e.data[95]&252|(65535&n?0:2)|(32768&n?1:0),e.cycles++}else if((t&65280)==512){let n=e.dataView.getInt8(((t&240)>>4)+16)*e.dataView.getInt8((t&15)+16);e.dataView.setInt16(0,n,!0),e.data[95]=e.data[95]&252|(65535&n?0:2)|(32768&n?1:0),e.cycles++}else if((t&65416)==768){let n=e.dataView.getInt8(((t&112)>>4)+16)*e.data[(t&7)+16];e.dataView.setInt16(0,n,!0),e.data[95]=e.data[95]&252|(65535&n?0:2)|(32768&n?1:0),e.cycles++}else if((t&65039)==37889){let n=(t&496)>>4,r=e.data[n],i=0-r;e.data[n]=i;let a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=i===128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=+!!i,a|=1&(i|r)?32:0,e.data[95]=a}else if(t!==0){if((t&64512)==10240){let n=e.data[(t&496)>>4]|e.data[t&15|(t&512)>>5];e.data[(t&496)>>4]=n;let r=e.data[95]&225;r|=n?0:2,r|=128&n?4:0,r|=r>>2&1^r>>3&1?16:0,e.data[95]=r}else if((t&61440)==24576){let n=e.data[((t&240)>>4)+16]|(t&15|(t&3840)>>4);e.data[((t&240)>>4)+16]=n;let r=e.data[95]&225;r|=n?0:2,r|=128&n?4:0,r|=r>>2&1^r>>3&1?16:0,e.data[95]=r}else if((t&63488)==47104)e.writeData((t&15|(t&1536)>>5)+32,e.data[(t&496)>>4]);else if((t&65039)==36879){let n=e.dataView.getUint16(93,!0)+1;e.dataView.setUint16(93,n,!0),e.data[(t&496)>>4]=e.data[n],e.cycles++}else if((t&65039)==37391){let n=e.dataView.getUint16(93,!0);e.data[n]=e.data[(t&496)>>4],e.dataView.setUint16(93,n-1,!0),e.cycles++}else if((t&61440)==53248){let n=(t&2047)-(t&2048?2048:0),r=e.pc+1,i=e.dataView.getUint16(93,!0),{pc22Bits:a}=e;e.data[i]=255&r,e.data[i-1]=r>>8&255,a&&(e.data[i-2]=r>>16&255),e.dataView.setUint16(93,i-(a?3:2),!0),e.pc+=n,e.cycles+=a?3:2}else if(t===38152){let{pc22Bits:t}=e,n=e.dataView.getUint16(93,!0)+(t?3:2);e.dataView.setUint16(93,n,!0),e.pc=(e.data[n-1]<<8)+e.data[n]-1,t&&(e.pc|=e.data[n-2]<<16),e.cycles+=t?4:3}else if(t===38168){let{pc22Bits:t}=e,n=e.dataView.getUint16(93,!0)+(t?3:2);e.dataView.setUint16(93,n,!0),e.pc=(e.data[n-1]<<8)+e.data[n]-1,t&&(e.pc|=e.data[n-2]<<16),e.cycles+=t?4:3,e.data[95]|=128}else if((t&61440)==49152)e.pc+=(t&2047)-(t&2048?2048:0),e.cycles++;else if((t&65039)==37895){let n=e.data[(t&496)>>4],r=n>>>1|(e.data[95]&1)<<7;e.data[(t&496)>>4]=r;let i=e.data[95]&224;i|=r?0:2,i|=128&r?4:0,i|=1&n?1:0,i|=i>>2&1^i&1?8:0,i|=i>>2&1^i>>3&1?16:0,e.data[95]=i}else if((t&64512)==2048){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=e.data[95],a=n-r-(i&1);e.data[(t&496)>>4]=a,i=i&192|(!a&&i>>1&1?2:0)|r+(i&1)>n,i|=128&a?4:0,i|=(n^r)&(n^a)&128?8:0,i|=i>>2&1^i>>3&1?16:0,i|=1&(~n&r|r&a|a&~n)?32:0,e.data[95]=i}else if((t&61440)==16384){let n=e.data[((t&240)>>4)+16],r=t&15|(t&3840)>>4,i=e.data[95],a=n-r-(i&1);e.data[((t&240)>>4)+16]=a,i=i&192|(!a&&i>>1&1?2:0)|r+(i&1)>n,i|=128&a?4:0,i|=(n^r)&(n^a)&128?8:0,i|=i>>2&1^i>>3&1?16:0,i|=1&(~n&r|r&a|a&~n)?32:0,e.data[95]=i}else if((t&65280)==39424){let n=((t&248)>>3)+32,r=1<<(t&7);e.writeData(n,e.readData(n)|r,r),e.cycles++}else if((t&65280)==39168){if(!(e.readData(((t&248)>>3)+32)&1<<(t&7))){let t=e.progMem[e.pc+1],n=pa(t)?2:1;e.cycles+=n,e.pc+=n}}else if((t&65280)==39680){if(e.readData(((t&248)>>3)+32)&1<<(t&7)){let t=e.progMem[e.pc+1],n=pa(t)?2:1;e.cycles+=n,e.pc+=n}}else if((t&65280)==38656){let n=2*((t&48)>>4)+24,r=e.dataView.getUint16(n,!0),i=t&15|(t&192)>>2,a=r-i;e.dataView.setUint16(n,a,!0);let o=e.data[95]&192;o|=a?0:2,o|=32768&a?4:0,o|=r&~a&32768?8:0,o|=o>>2&1^o>>3&1?16:0,o|=+(i>r),o|=1&(~r&i|i&a|a&~r)?32:0,e.data[95]=o,e.cycles++}else if((t&65032)==64512){if(!(e.data[(t&496)>>4]&1<<(t&7))){let t=e.progMem[e.pc+1],n=pa(t)?2:1;e.cycles+=n,e.pc+=n}}else if((t&65032)==65024){if(e.data[(t&496)>>4]&1<<(t&7)){let t=e.progMem[e.pc+1],n=pa(t)?2:1;e.cycles+=n,e.pc+=n}}else if(t!==38280&&t!==38376&&t!==38392){if((t&65039)==37376){let n=e.data[(t&496)>>4],r=e.progMem[e.pc+1];e.writeData(r,n),e.pc++,e.cycles++}else if((t&65039)==37388)e.writeData(e.dataView.getUint16(26,!0),e.data[(t&496)>>4]),e.cycles++;else if((t&65039)==37389){let n=e.dataView.getUint16(26,!0);e.writeData(n,e.data[(t&496)>>4]),e.dataView.setUint16(26,n+1,!0),e.cycles++}else if((t&65039)==37390){let n=e.data[(t&496)>>4],r=e.dataView.getUint16(26,!0)-1;e.dataView.setUint16(26,r,!0),e.writeData(r,n),e.cycles++}else if((t&65039)==33288)e.writeData(e.dataView.getUint16(28,!0),e.data[(t&496)>>4]),e.cycles++;else if((t&65039)==37385){let n=e.data[(t&496)>>4],r=e.dataView.getUint16(28,!0);e.writeData(r,n),e.dataView.setUint16(28,r+1,!0),e.cycles++}else if((t&65039)==37386){let n=e.data[(t&496)>>4],r=e.dataView.getUint16(28,!0)-1;e.dataView.setUint16(28,r,!0),e.writeData(r,n),e.cycles++}else if((t&53768)==33288&&t&7|(t&3072)>>7|(t&8192)>>8)e.writeData(e.dataView.getUint16(28,!0)+(t&7|(t&3072)>>7|(t&8192)>>8),e.data[(t&496)>>4]),e.cycles++;else if((t&65039)==33280)e.writeData(e.dataView.getUint16(30,!0),e.data[(t&496)>>4]),e.cycles++;else if((t&65039)==37377){let n=e.dataView.getUint16(30,!0);e.writeData(n,e.data[(t&496)>>4]),e.dataView.setUint16(30,n+1,!0),e.cycles++}else if((t&65039)==37378){let n=e.data[(t&496)>>4],r=e.dataView.getUint16(30,!0)-1;e.dataView.setUint16(30,r,!0),e.writeData(r,n),e.cycles++}else if((t&53768)==33280&&t&7|(t&3072)>>7|(t&8192)>>8)e.writeData(e.dataView.getUint16(30,!0)+(t&7|(t&3072)>>7|(t&8192)>>8),e.data[(t&496)>>4]),e.cycles++;else if((t&64512)==6144){let n=e.data[(t&496)>>4],r=e.data[t&15|(t&512)>>5],i=n-r;e.data[(t&496)>>4]=i;let a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=(n^r)&(n^i)&128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=+(r>n),a|=1&(~n&r|r&i|i&~n)?32:0,e.data[95]=a}else if((t&61440)==20480){let n=e.data[((t&240)>>4)+16],r=t&15|(t&3840)>>4,i=n-r;e.data[((t&240)>>4)+16]=i;let a=e.data[95]&192;a|=i?0:2,a|=128&i?4:0,a|=(n^r)&(n^i)&128?8:0,a|=a>>2&1^a>>3&1?16:0,a|=+(r>n),a|=1&(~n&r|r&i|i&~n)?32:0,e.data[95]=a}else if((t&65039)==37890){let n=(t&496)>>4,r=e.data[n];e.data[n]=(15&r)<<4|(240&r)>>>4}else if(t===38312)e.onWatchdogReset();else if((t&65039)==37380){let n=(t&496)>>4,r=e.data[n],i=e.data[e.dataView.getUint16(30,!0)];e.data[e.dataView.getUint16(30,!0)]=r,e.data[n]=i}}}e.pc=(e.pc+1)%e.progMem.length,e.cycles++}var ha;(function(e){e[e.AVCC=0]=`AVCC`,e[e.AREF=1]=`AREF`,e[e.Internal1V1=2]=`Internal1V1`,e[e.Internal2V56=3]=`Internal2V56`,e[e.Reserved=4]=`Reserved`})(ha||={});var ga;(function(e){e[e.SingleEnded=0]=`SingleEnded`,e[e.Differential=1]=`Differential`,e[e.Constant=2]=`Constant`,e[e.Temperature=3]=`Temperature`})(ga||={}),ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.SingleEnded,ga.Temperature,ga.Constant,ga.Constant;var _a={type:ga.Constant,voltage:0};ha.AREF,ha.AVCC,ha.Reserved,ha.Internal1V1;var va=7,ya=8,ba=16,xa=64,Sa=128,Ca=31,wa=32,Ta=8,Ea=8,Da=3,Oa=6,ka=class{constructor(e,t){this.cpu=e,this.config=t,this.channelValues=Array(this.config.numChannels),this.avcc=5,this.aref=5,this.onADCRead=e=>{let t=0;switch(e.type){case ga.Constant:t=e.voltage;break;case ga.SingleEnded:t=this.channelValues[e.channel]??0;break;case ga.Differential:t=e.gain*((this.channelValues[e.positiveChannel]||0)-(this.channelValues[e.negativeChannel]||0));break;case ga.Temperature:t=.378125;break}let n=t/this.referenceVoltage*1024,r=Math.min(Math.max(Math.floor(n),0),1023);this.cpu.addClockEvent(()=>this.completeADCRead(r),this.sampleCycles)},this.converting=!1,this.conversionCycles=25,this.ADC={address:this.config.adcInterrupt,flagRegister:this.config.ADCSRA,flagMask:ba,enableRegister:this.config.ADCSRA,enableMask:ya},e.writeHooks[t.ADCSRA]=(n,r)=>{if(n&Sa&&!(r&&Sa)&&(this.conversionCycles=25),e.data[t.ADCSRA]=n,e.updateInterruptEnable(this.ADC,n),!this.converting&&n&xa){if(!(n&Sa))return this.cpu.addClockEvent(()=>this.completeADCRead(0),this.sampleCycles),!0;let r=this.cpu.data[this.config.ADMUX]&Ca;e.data[t.ADCSRB]&Ta&&(r|=32),r&=t.muxInputMask;let i=t.muxChannels[r]??_a;return this.converting=!0,this.onADCRead(i),!0}}}completeADCRead(e){let{ADCL:t,ADCH:n,ADMUX:r,ADCSRA:i}=this.config;this.converting=!1,this.conversionCycles=13,this.cpu.data[r]&wa?(this.cpu.data[t]=e<<6&255,this.cpu.data[n]=e>>2):(this.cpu.data[t]=e&255,this.cpu.data[n]=e>>8&3),this.cpu.data[i]&=-65,this.cpu.setInterruptFlag(this.ADC)}get prescaler(){let{ADCSRA:e}=this.config;switch(this.cpu.data[e]&va){case 0:case 1:return 2;case 2:return 4;case 3:return 8;case 4:return 16;case 5:return 32;case 6:return 64;default:return 128}}get referenceVoltageType(){let{ADMUX:e,adcReferences:t}=this.config,n=this.cpu.data[e]>>Oa&Da;return t.length>4&&this.cpu.data[e]&Ea&&(n|=4),t[n]??ha.Reserved}get referenceVoltage(){switch(this.referenceVoltageType){case ha.AVCC:return this.avcc;case ha.AREF:return this.aref;case ha.Internal1V1:return 1.1;case ha.Internal2V56:return 2.56;default:return this.avcc}}get sampleCycles(){return this.conversionCycles*this.prescaler}},Aa={EICR:105,EIMSK:61,EIFR:60,index:0,iscOffset:0,interrupt:2},ja={EICR:105,EIMSK:61,EIFR:60,index:1,iscOffset:2,interrupt:4},Ma={PCIE:0,PCICR:104,PCIFR:59,PCMSK:107,pinChangeInterrupt:6,mask:255,offset:0},Na={PCIE:2,PCICR:104,PCIFR:59,PCMSK:109,pinChangeInterrupt:10,mask:255,offset:0},Pa={PIN:35,DDR:36,PORT:37,pinChange:Ma,externalInterrupts:[]},Fa={PIN:41,DDR:42,PORT:43,pinChange:Na,externalInterrupts:[null,null,Aa,ja]},Ia;(function(e){e[e.Low=0]=`Low`,e[e.High=1]=`High`,e[e.Input=2]=`Input`,e[e.InputPullUp=3]=`InputPullUp`})(Ia||={});var La;(function(e){e[e.None=0]=`None`,e[e.Enable=1]=`Enable`,e[e.Set=2]=`Set`,e[e.Clear=3]=`Clear`,e[e.Toggle=4]=`Toggle`})(La||={});var Ra;(function(e){e[e.LowLevel=0]=`LowLevel`,e[e.Change=1]=`Change`,e[e.FallingEdge=2]=`FallingEdge`,e[e.RisingEdge=3]=`RisingEdge`})(Ra||={});var za=class{constructor(e,t){this.cpu=e,this.portConfig=t,this.externalClockListeners=[],this.listeners=[],this.pinValue=0,this.overrideMask=255,this.overrideValue=0,this.lastValue=0,this.lastDdr=0,this.lastPin=0,this.openCollector=0,e.gpioPorts.add(this),e.gpioByPort[t.PORT]=this,e.writeHooks[t.DDR]=n=>{let r=e.data[t.PORT];return e.data[t.DDR]=n,this.writeGpio(r,n),this.updatePinRegister(n),!0},e.writeHooks[t.PORT]=n=>{let r=e.data[t.DDR];return e.data[t.PORT]=n,this.writeGpio(n,r),this.updatePinRegister(r),!0},e.writeHooks[t.PIN]=(n,r,i,a)=>{let o=e.data[t.PORT],s=e.data[t.DDR],c=o^n&a;return e.data[t.PORT]=c,this.writeGpio(c,s),this.updatePinRegister(s),!0};let{externalInterrupts:n}=t;this.externalInts=n.map(e=>e?{address:e.interrupt,flagRegister:e.EIFR,flagMask:1<<e.index,enableRegister:e.EIMSK,enableMask:1<<e.index}:null);let r=new Set(n.map(e=>e?.EICR));for(let e of r)this.attachInterruptHook(e||0);let i=n.find(e=>e&&e.EIMSK)?.EIMSK??0;this.attachInterruptHook(i,`mask`);let a=n.find(e=>e&&e.EIFR)?.EIFR??0;this.attachInterruptHook(a,`flag`);let{pinChange:o}=t;if(this.PCINT=o?{address:o.pinChangeInterrupt,flagRegister:o.PCIFR,flagMask:1<<o.PCIE,enableRegister:o.PCICR,enableMask:1<<o.PCIE}:null,o){let{PCIFR:t,PCMSK:n}=o;e.writeHooks[t]=t=>{for(let n of this.cpu.gpioPorts){let{PCINT:r}=n;r&&e.clearInterruptByFlag(r,t)}return!0},e.writeHooks[n]=t=>{e.data[n]=t;for(let n of this.cpu.gpioPorts){let{PCINT:r}=n;r&&e.updateInterruptEnable(r,t)}return!0}}}addListener(e){this.listeners.push(e)}removeListener(e){this.listeners=this.listeners.filter(t=>t!==e)}pinState(e){let t=this.cpu.data[this.portConfig.DDR],n=this.cpu.data[this.portConfig.PORT],r=1<<e,i=n&r?Ia.InputPullUp:Ia.Input,a=this.openCollector&r?i:Ia.High;return t&r?this.lastValue&r?a:Ia.Low:i}setPin(e,t){let n=1<<e;this.pinValue&=~n,t&&(this.pinValue|=n),this.updatePinRegister(this.cpu.data[this.portConfig.DDR])}timerOverridePin(e,t){let{cpu:n,portConfig:r}=this,i=1<<e;if(t===La.None)this.overrideMask|=i,this.overrideValue&=~i;else switch(this.overrideMask&=~i,t){case La.Enable:this.overrideValue&=~i,this.overrideValue|=n.data[r.PORT]&i;break;case La.Set:this.overrideValue|=i;break;case La.Clear:this.overrideValue&=~i;break;case La.Toggle:this.overrideValue^=i;break}let a=n.data[r.DDR];this.writeGpio(n.data[r.PORT],a),this.updatePinRegister(a)}updatePinRegister(e){var t,n;let r=this.pinValue&~e|this.lastValue&e;if(this.cpu.data[this.portConfig.PIN]=r,this.lastPin!==r){for(let e=0;e<8;e++)if((r&1<<e)!=(this.lastPin&1<<e)){let i=!!(r&1<<e);this.toggleInterrupt(e,i),(n=(t=this.externalClockListeners)[e])==null||n.call(t,i)}this.lastPin=r}}toggleInterrupt(e,t){let{cpu:n,portConfig:r,externalInts:i,PCINT:a}=this,{externalInterrupts:o,pinChange:s}=r,c=o[e],l=i[e];if(l&&c){let{EIMSK:e,index:r,EICR:i,iscOffset:a}=c;if(n.data[e]&1<<r){let e=n.data[i]>>a&3,r=!1;switch(l.constant=!1,e){case Ra.LowLevel:r=!t,l.constant=!0;break;case Ra.Change:r=!0;break;case Ra.FallingEdge:r=!t;break;case Ra.RisingEdge:r=t;break}r?n.setInterruptFlag(l):l.constant&&n.clearInterrupt(l,!0)}}if(s&&a&&s.mask&1<<e){let{PCMSK:t}=s;n.data[t]&1<<e+s.offset&&n.setInterruptFlag(a)}}attachInterruptHook(e,t=`other`){if(!e)return;let{cpu:n}=this;n.writeHooks[e]=r=>{t!==`flag`&&(n.data[e]=r);for(let e of n.gpioPorts){for(let i of e.externalInts)i&&t===`mask`&&n.updateInterruptEnable(i,r),i&&!i.constant&&t===`flag`&&n.clearInterruptByFlag(i,r);e.checkExternalInterrupts()}return!0}}checkExternalInterrupts(){let{cpu:e}=this,{externalInterrupts:t}=this.portConfig;for(let n=0;n<8;n++){let r=t[n];if(!r)continue;let i=!!(this.lastPin&1<<n),{EIFR:a,EIMSK:o,index:s,EICR:c,iscOffset:l,interrupt:u}=r;!(e.data[o]&1<<s)||i||(e.data[c]>>l&3)===Ra.LowLevel&&e.queueInterrupt({address:u,flagRegister:a,flagMask:1<<s,enableRegister:o,enableMask:1<<s,constant:!0})}}writeGpio(e,t){let n=(e&this.overrideMask|this.overrideValue)&t|e&~t,r=this.lastValue;if(n!==r||t!==this.lastDdr){this.lastValue=n,this.lastDdr=t;for(let e of this.listeners)e(n,r)}}},Ba={0:0,1:1,2:8,3:64,4:256,5:1024,6:0,7:0},Va;(function(e){e[e.FallingEdge=6]=`FallingEdge`,e[e.RisingEdge=7]=`RisingEdge`})(Va||={});var Ha={TOV:1,OCFA:2,OCFB:4,OCFC:0,TOIE:1,OCIEA:2,OCIEB:4,OCIEC:0};Object.assign({bits:8,captureInterrupt:0,compAInterrupt:28,compBInterrupt:30,compCInterrupt:0,ovfInterrupt:32,TIFR:53,OCRA:71,OCRB:72,OCRC:0,ICR:0,TCNT:70,TCCRA:68,TCCRB:69,TCCRC:0,TIMSK:110,dividers:Ba,compPortA:Fa.PORT,compPinA:6,compPortB:Fa.PORT,compPinB:5,compPortC:0,compPinC:0,externalClockPort:Fa.PORT,externalClockPin:4},Ha),Object.assign({bits:16,captureInterrupt:20,compAInterrupt:22,compBInterrupt:24,compCInterrupt:0,ovfInterrupt:26,TIFR:54,OCRA:136,OCRB:138,OCRC:0,ICR:134,TCNT:132,TCCRA:128,TCCRB:129,TCCRC:130,TIMSK:111,dividers:Ba,compPortA:Pa.PORT,compPinA:1,compPortB:Pa.PORT,compPinB:2,compPortC:0,compPinC:0,externalClockPort:Fa.PORT,externalClockPin:5},Ha),Object.assign({bits:8,captureInterrupt:0,compAInterrupt:14,compBInterrupt:16,compCInterrupt:0,ovfInterrupt:18,TIFR:55,OCRA:179,OCRB:180,OCRC:0,ICR:0,TCNT:178,TCCRA:176,TCCRB:177,TCCRC:0,TIMSK:112,dividers:{0:0,1:1,2:8,3:32,4:64,5:128,6:256,7:1024},compPortA:Pa.PORT,compPinA:3,compPortB:Fa.PORT,compPinB:3,compPortC:0,compPinC:0,externalClockPort:0,externalClockPin:0},Ha);var Ua;(function(e){e[e.Normal=0]=`Normal`,e[e.PWMPhaseCorrect=1]=`PWMPhaseCorrect`,e[e.CTC=2]=`CTC`,e[e.FastPWM=3]=`FastPWM`,e[e.PWMPhaseFrequencyCorrect=4]=`PWMPhaseFrequencyCorrect`,e[e.Reserved=5]=`Reserved`})(Ua||={});var Wa;(function(e){e[e.Max=0]=`Max`,e[e.Top=1]=`Top`,e[e.Bottom=2]=`Bottom`})(Wa||={});var R;(function(e){e[e.Immediate=0]=`Immediate`,e[e.Top=1]=`Top`,e[e.Bottom=2]=`Bottom`})(R||={});var Ga=1,Ka=2,qa=1,{Normal:Ja,PWMPhaseCorrect:Ya,CTC:Xa,FastPWM:Za,Reserved:Qa,PWMPhaseFrequencyCorrect:$a}=Ua,eo=[[Ja,255,R.Immediate,Wa.Max,0],[Ya,255,R.Top,Wa.Bottom,0],[Xa,Ga,R.Immediate,Wa.Max,0],[Za,255,R.Bottom,Wa.Max,0],[Qa,255,R.Immediate,Wa.Max,0],[Ya,Ga,R.Top,Wa.Bottom,qa],[Qa,255,R.Immediate,Wa.Max,0],[Za,Ga,R.Bottom,Wa.Top,qa]],to=[[Ja,65535,R.Immediate,Wa.Max,0],[Ya,255,R.Top,Wa.Bottom,0],[Ya,511,R.Top,Wa.Bottom,0],[Ya,1023,R.Top,Wa.Bottom,0],[Xa,Ga,R.Immediate,Wa.Max,0],[Za,255,R.Bottom,Wa.Top,0],[Za,511,R.Bottom,Wa.Top,0],[Za,1023,R.Bottom,Wa.Top,0],[$a,Ka,R.Bottom,Wa.Bottom,0],[$a,Ga,R.Bottom,Wa.Bottom,qa],[Ya,Ka,R.Top,Wa.Bottom,0],[Ya,Ga,R.Top,Wa.Bottom,qa],[Xa,Ka,R.Immediate,Wa.Max,0],[Qa,65535,R.Immediate,Wa.Max,0],[Za,Ka,R.Bottom,Wa.Top,qa],[Za,Ga,R.Bottom,Wa.Top,qa]];function no(e){switch(e){case 1:return La.Toggle;case 2:return La.Clear;case 3:return La.Set;default:return La.Enable}}var ro=128,io=64,ao=32,oo=class{constructor(e,t){if(this.cpu=e,this.config=t,this.MAX=this.config.bits===16?65535:255,this.lastCycle=0,this.ocrA=0,this.nextOcrA=0,this.ocrB=0,this.nextOcrB=0,this.hasOCRC=this.config.OCRC>0,this.ocrC=0,this.nextOcrC=0,this.ocrUpdateMode=R.Immediate,this.tovUpdateMode=Wa.Max,this.icr=0,this.tcnt=0,this.tcntNext=0,this.tcntUpdated=!1,this.updateDivider=!1,this.countingUp=!0,this.divider=0,this.externalClockRisingEdge=!1,this.highByteTemp=0,this.OVF={address:this.config.ovfInterrupt,flagRegister:this.config.TIFR,flagMask:this.config.TOV,enableRegister:this.config.TIMSK,enableMask:this.config.TOIE},this.OCFA={address:this.config.compAInterrupt,flagRegister:this.config.TIFR,flagMask:this.config.OCFA,enableRegister:this.config.TIMSK,enableMask:this.config.OCIEA},this.OCFB={address:this.config.compBInterrupt,flagRegister:this.config.TIFR,flagMask:this.config.OCFB,enableRegister:this.config.TIMSK,enableMask:this.config.OCIEB},this.OCFC={address:this.config.compCInterrupt,flagRegister:this.config.TIFR,flagMask:this.config.OCFC,enableRegister:this.config.TIMSK,enableMask:this.config.OCIEC},this.count=(e=!0,t=!1)=>{let{divider:n,lastCycle:r,cpu:i}=this,{cycles:a}=i,o=a-r;if(n&&o>=n||t){let e=t?1:Math.floor(o/n);this.lastCycle+=e*n;let r=this.tcnt,{timerMode:a,TOP:s}=this,c=a===Ya||a===$a,l=c?this.phasePwmCount(r,e):(r+e)%(s+1),u=r+e>s;if(this.tcntUpdated||(this.tcnt=l,c||this.timerUpdated(l,r)),!c){if(a===Za&&u){let{compA:e,compB:t}=this;e&&this.updateCompPin(e,`A`,!0),t&&this.updateCompPin(t,`B`,!0)}this.ocrUpdateMode==R.Bottom&&u&&(this.ocrA=this.nextOcrA,this.ocrB=this.nextOcrB,this.ocrC=this.nextOcrC),u&&(this.tovUpdateMode==Wa.Top||s===this.MAX)&&i.setInterruptFlag(this.OVF)}}if(this.tcntUpdated&&(this.tcnt=this.tcntNext,this.tcntUpdated=!1,(this.tcnt===0&&this.ocrUpdateMode===R.Bottom||this.tcnt===this.TOP&&this.ocrUpdateMode===R.Top)&&(this.ocrA=this.nextOcrA,this.ocrB=this.nextOcrB,this.ocrC=this.nextOcrC)),this.updateDivider){let{CS:e}=this,{externalClockPin:t}=this.config,n=this.config.dividers[e];this.lastCycle=n?this.cpu.cycles:0,this.updateDivider=!1,this.divider=n,this.config.externalClockPort&&!this.externalClockPort&&(this.externalClockPort=this.cpu.gpioByPort[this.config.externalClockPort]),this.externalClockPort&&(this.externalClockPort.externalClockListeners[t]=null),n?i.addClockEvent(this.count,this.lastCycle+n-i.cycles):this.externalClockPort&&(e===Va.FallingEdge||e===Va.RisingEdge)&&(this.externalClockPort.externalClockListeners[t]=this.externalClockCallback,this.externalClockRisingEdge=e===Va.RisingEdge);return}e&&n&&i.addClockEvent(this.count,this.lastCycle+n-i.cycles)},this.externalClockCallback=e=>{e===this.externalClockRisingEdge&&this.count(!1,!0)},this.updateWGMConfig(),this.cpu.readHooks[t.TCNT]=e=>(this.count(!1),this.config.bits===16&&(this.cpu.data[e+1]=this.tcnt>>8),this.cpu.data[e]=this.tcnt&255),this.cpu.writeHooks[t.TCNT]=e=>{this.tcntNext=this.highByteTemp<<8|e,this.countingUp=!0,this.tcntUpdated=!0,this.cpu.updateClockEvent(this.count,0),this.divider&&this.timerUpdated(this.tcntNext,this.tcntNext)},this.cpu.writeHooks[t.OCRA]=e=>{this.nextOcrA=this.highByteTemp<<8|e,this.ocrUpdateMode===R.Immediate&&(this.ocrA=this.nextOcrA)},this.cpu.writeHooks[t.OCRB]=e=>{this.nextOcrB=this.highByteTemp<<8|e,this.ocrUpdateMode===R.Immediate&&(this.ocrB=this.nextOcrB)},this.hasOCRC&&(this.cpu.writeHooks[t.OCRC]=e=>{this.nextOcrC=this.highByteTemp<<8|e,this.ocrUpdateMode===R.Immediate&&(this.ocrC=this.nextOcrC)}),this.config.bits===16){this.cpu.writeHooks[t.ICR]=e=>{this.icr=this.highByteTemp<<8|e};let n=e=>{this.highByteTemp=e},r=(t,n,r)=>(this.highByteTemp=t&this.ocrMask>>8,e.data[r]=this.highByteTemp,!0);this.cpu.writeHooks[t.TCNT+1]=n,this.cpu.writeHooks[t.OCRA+1]=r,this.cpu.writeHooks[t.OCRB+1]=r,this.hasOCRC&&(this.cpu.writeHooks[t.OCRC+1]=r),this.cpu.writeHooks[t.ICR+1]=n}e.writeHooks[t.TCCRA]=e=>(this.cpu.data[t.TCCRA]=e,this.updateWGMConfig(),!0),e.writeHooks[t.TCCRB]=e=>(t.TCCRC||(this.checkForceCompare(e),e&=-193),this.cpu.data[t.TCCRB]=e,this.updateDivider=!0,this.cpu.clearClockEvent(this.count),this.cpu.addClockEvent(this.count,0),this.updateWGMConfig(),!0),t.TCCRC&&(e.writeHooks[t.TCCRC]=e=>{this.checkForceCompare(e)}),e.writeHooks[t.TIFR]=e=>(this.cpu.data[t.TIFR]=e,this.cpu.clearInterruptByFlag(this.OVF,e),this.cpu.clearInterruptByFlag(this.OCFA,e),this.cpu.clearInterruptByFlag(this.OCFB,e),!0),e.writeHooks[t.TIMSK]=e=>{this.cpu.updateInterruptEnable(this.OVF,e),this.cpu.updateInterruptEnable(this.OCFA,e),this.cpu.updateInterruptEnable(this.OCFB,e)}}reset(){this.divider=0,this.lastCycle=0,this.ocrA=0,this.nextOcrA=0,this.ocrB=0,this.nextOcrB=0,this.ocrC=0,this.nextOcrC=0,this.icr=0,this.tcnt=0,this.tcntNext=0,this.tcntUpdated=!1,this.countingUp=!1,this.updateDivider=!0}get TCCRA(){return this.cpu.data[this.config.TCCRA]}get TCCRB(){return this.cpu.data[this.config.TCCRB]}get TIMSK(){return this.cpu.data[this.config.TIMSK]}get CS(){return this.TCCRB&7}get WGM(){let e=this.config.bits===16?24:8;return(this.TCCRB&e)>>1|this.TCCRA&3}get TOP(){switch(this.topValue){case Ga:return this.ocrA;case Ka:return this.icr;default:return this.topValue}}get ocrMask(){switch(this.topValue){case Ga:case Ka:return 65535;default:return this.topValue}}get debugTCNT(){return this.tcnt}updateWGMConfig(){let{config:e,WGM:t}=this,n=e.bits===16?to:eo,r=this.cpu.data[e.TCCRA],[i,a,o,s,c]=n[t];this.timerMode=i,this.topValue=a,this.ocrUpdateMode=o,this.tovUpdateMode=s;let l=i===Za||i===Ya||i===$a,u=this.compA;this.compA=r>>6&3,this.compA===1&&l&&!(c&qa)&&(this.compA=0),!!u!=!!this.compA&&this.updateCompA(this.compA?La.Enable:La.None);let d=this.compB;if(this.compB=r>>4&3,this.compB===1&&l&&(this.compB=0),!!d!=!!this.compB&&this.updateCompB(this.compB?La.Enable:La.None),this.hasOCRC){let e=this.compC;this.compC=r>>2&3,this.compC===1&&l&&(this.compC=0),!!e!=!!this.compC&&this.updateCompC(this.compC?La.Enable:La.None)}}phasePwmCount(e,t){let{ocrA:n,ocrB:r,ocrC:i,hasOCRC:a,TOP:o,MAX:s,tcntUpdated:c}=this;for(!e&&!o&&(t=0,this.ocrUpdateMode===R.Top&&(this.ocrA=this.nextOcrA,this.ocrB=this.nextOcrB,this.ocrC=this.nextOcrC));t>0;)this.countingUp?(e++,e===o&&!c&&(this.countingUp=!1,this.ocrUpdateMode===R.Top&&(this.ocrA=this.nextOcrA,this.ocrB=this.nextOcrB,this.ocrC=this.nextOcrC))):(e--,!e&&!c&&(this.countingUp=!0,this.cpu.setInterruptFlag(this.OVF),this.ocrUpdateMode===R.Bottom&&(this.ocrA=this.nextOcrA,this.ocrB=this.nextOcrB,this.ocrC=this.nextOcrC))),c||(e===n&&(this.cpu.setInterruptFlag(this.OCFA),this.compA&&this.updateCompPin(this.compA,`A`)),e===r&&(this.cpu.setInterruptFlag(this.OCFB),this.compB&&this.updateCompPin(this.compB,`B`)),a&&e===i&&(this.cpu.setInterruptFlag(this.OCFC),this.compC&&this.updateCompPin(this.compC,`C`))),t--;return e&s}timerUpdated(e,t){let{ocrA:n,ocrB:r,ocrC:i,hasOCRC:a}=this,o=t>e;((t<n||o)&&e>=n||t<n&&o)&&(this.cpu.setInterruptFlag(this.OCFA),this.compA&&this.updateCompPin(this.compA,`A`)),((t<r||o)&&e>=r||t<r&&o)&&(this.cpu.setInterruptFlag(this.OCFB),this.compB&&this.updateCompPin(this.compB,`B`)),a&&((t<i||o)&&e>=i||t<i&&o)&&(this.cpu.setInterruptFlag(this.OCFC),this.compC&&this.updateCompPin(this.compC,`C`))}checkForceCompare(e){this.timerMode==Ua.FastPWM||this.timerMode==Ua.PWMPhaseCorrect||this.timerMode==Ua.PWMPhaseFrequencyCorrect||(e&ro&&this.updateCompPin(this.compA,`A`),e&io&&this.updateCompPin(this.compB,`B`),this.config.compPortC&&e&ao&&this.updateCompPin(this.compC,`C`))}updateCompPin(e,t,n=!1){let r=La.None,i=e===3,a=this.countingUp===i;switch(this.timerMode){case Ja:case Xa:r=no(e);break;case Za:r=e===1?n?La.None:La.Toggle:i===n?La.Clear:La.Set;break;case Ya:case $a:r=e===1?La.Toggle:a?La.Set:La.Clear;break}r!==La.None&&(t===`A`?this.updateCompA(r):t===`B`?this.updateCompB(r):this.updateCompC(r))}updateCompA(e){let{compPortA:t,compPinA:n}=this.config;this.cpu.gpioByPort[t]?.timerOverridePin(n,e)}updateCompB(e){let{compPortB:t,compPinB:n}=this.config;this.cpu.gpioByPort[t]?.timerOverridePin(n,e)}updateCompC(e){let{compPortC:t,compPinC:n}=this.config;this.cpu.gpioByPort[t]?.timerOverridePin(n,e)}},z={ACBG:6,ACD:7,ACI:4,ACIC:2,ACIE:3,ACIS0:0,ACIS1:1,ACIaddr:56,ACME:6,ACO:5,ACSR:48,ADATE:5,ADC0D:0,ADC10D:2,ADC11D:3,ADC12D:4,ADC13D:5,ADC14D:6,ADC15D:7,ADC1D:1,ADC2D:2,ADC3D:3,ADC4D:4,ADC5D:5,ADC6D:6,ADC7D:7,ADC8D:0,ADC9D:1,ADCCaddr:58,ADCH:121,ADCH0:0,ADCH1:1,ADCH2:2,ADCH3:3,ADCH4:4,ADCH5:5,ADCH6:6,ADCH7:7,ADCL:120,ADCL0:0,ADCL1:1,ADCL2:2,ADCL3:3,ADCL4:4,ADCL5:5,ADCL6:6,ADCL7:7,ADCSRA:122,ADCSRB:123,ADEN:7,ADIE:3,ADIF:4,ADLAR:5,ADMUX:124,ADPS0:0,ADPS1:1,ADPS2:2,ADSC:6,ADTS0:0,ADTS1:1,ADTS2:2,AIN0D:0,AIN1D:1,AS2:5,ASSR:182,BLB01:2,BLB02:3,BLB11:4,BLB12:5,BLBSET:3,BODLEVEL0:0,BODLEVEL1:1,BODLEVEL2:2,BOOTRST:0,BOOTSZ0:1,BOOTSZ1:2,BORF:2,CAL0:0,CAL1:1,CAL2:2,CAL3:3,CAL4:4,CAL5:5,CAL6:6,CAL7:7,CKDIV8:7,CKOUT:6,CKSEL0:0,CKSEL1:1,CKSEL2:2,CKSEL3:3,CLKPCE:7,CLKPR:97,CLKPS0:0,CLKPS1:1,CLKPS2:2,CLKPS3:3,COM0A0:6,COM0A1:7,COM0B0:4,COM0B1:5,COM1A0:6,COM1A1:7,COM1B0:4,COM1B1:5,COM1C0:2,COM1C1:3,COM2A0:6,COM2A1:7,COM2B0:4,COM2B1:5,COM3A0:6,COM3A1:7,COM3B0:4,COM3B1:5,COM3C0:2,COM3C1:3,COM4A0:6,COM4A1:7,COM4B0:4,COM4B1:5,COM4C0:2,COM4C1:3,COM5A0:6,COM5A1:7,COM5B0:4,COM5B1:5,COM5C0:2,COM5C1:3,CPHA:2,CPOL:3,CS00:0,CS01:1,CS02:2,CS10:0,CS11:1,CS12:2,CS20:0,CS21:1,CS22:2,CS30:0,CS31:1,CS32:2,CS40:0,CS41:1,CS42:2,CS50:0,CS51:1,CS52:2,DDA0:0,DDA1:1,DDA2:2,DDA3:3,DDA4:4,DDA5:5,DDA6:6,DDA7:7,DDB0:0,DDB1:1,DDB2:2,DDB3:3,DDB4:4,DDB5:5,DDB6:6,DDB7:7,DDC0:0,DDC1:1,DDC2:2,DDC3:3,DDC4:4,DDC5:5,DDC6:6,DDC7:7,DDD0:0,DDD1:1,DDD2:2,DDD3:3,DDD4:4,DDD5:5,DDD6:6,DDD7:7,DDE0:0,DDE1:1,DDE2:2,DDE3:3,DDE4:4,DDE5:5,DDE6:6,DDE7:7,DDF0:0,DDF1:1,DDF2:2,DDF3:3,DDF4:4,DDF5:5,DDF6:6,DDF7:7,DDG0:0,DDG1:1,DDG2:2,DDG3:3,DDG4:4,DDG5:5,DDH0:0,DDH1:1,DDH2:2,DDH3:3,DDH4:4,DDH5:5,DDH6:6,DDH7:7,DDJ0:0,DDJ1:1,DDJ2:2,DDJ3:3,DDJ4:4,DDJ5:5,DDJ6:6,DDJ7:7,DDK0:0,DDK1:1,DDK2:2,DDK3:3,DDK4:4,DDK5:5,DDK6:6,DDK7:7,DDL0:0,DDL1:1,DDL2:2,DDL3:3,DDL4:4,DDL5:5,DDL6:6,DDL7:7,DDRA:1,DDRB:4,DDRC:7,DDRD:10,DDRE:13,DDRF:16,DDRG:19,DDRH:257,DDRJ:260,DDRK:263,DDRL:266,DIDR0:126,DIDR1:127,DIDR2:125,DOR0:3,DOR1:3,DOR2:3,DOR3:3,DORD:5,E2END:4095,EEADRBITS:12,EEAR0:0,EEAR1:1,EEAR10:2,EEAR11:3,EEAR2:2,EEAR3:3,EEAR4:4,EEAR5:5,EEAR6:6,EEAR7:7,EEAR8:0,EEAR9:1,EEARH:34,EEARL:33,EECR:31,EEDR:32,EEDR0:0,EEDR1:1,EEDR2:2,EEDR3:3,EEDR4:4,EEDR5:5,EEDR6:6,EEDR7:7,EEMPE:2,EEPE:1,EEPM0:4,EEPM1:5,EEPROMEND:4095,EERE:0,EERIE:3,EESAVE:3,EICRA:105,EICRB:106,EIFR:28,EIMSK:29,EIND:60,EIND0:0,ERDYaddr:60,EXCLK:6,EXTRF:1,FE0:4,FE1:4,FE2:4,FE3:4,FIRSTBOOTSTART:130560,FLASHEND:131071,FOC0A:7,FOC0B:6,FOC1A:7,FOC1B:6,FOC1C:5,FOC2A:7,FOC2B:6,FOC3A:7,FOC3B:6,FOC3C:5,FOC4A:7,FOC4B:6,FOC4C:5,FOC5A:7,FOC5B:6,FOC5C:5,FOURTHBOOTSTART:126976,GPIOR0:30,GPIOR00:0,GPIOR01:1,GPIOR02:2,GPIOR03:3,GPIOR04:4,GPIOR05:5,GPIOR06:6,GPIOR07:7,GPIOR1:42,GPIOR10:0,GPIOR11:1,GPIOR12:2,GPIOR13:3,GPIOR14:4,GPIOR15:5,GPIOR16:6,GPIOR17:7,GPIOR2:43,GPIOR20:0,GPIOR21:1,GPIOR22:2,GPIOR23:3,GPIOR24:4,GPIOR25:5,GPIOR26:6,GPIOR27:7,GTCCR:35,ICES1:6,ICES3:6,ICES4:6,ICES5:6,ICF1:5,ICF3:5,ICF4:5,ICF5:5,ICIE1:5,ICIE3:5,ICIE4:5,ICIE5:5,ICNC1:7,ICNC3:7,ICNC4:7,ICNC5:7,ICP1addr:32,ICP3addr:62,ICP4addr:82,ICP5addr:92,ICR1H:135,ICR1L:134,ICR3H:151,ICR3L:150,ICR4H:167,ICR4L:166,ICR5H:295,ICR5H0:0,ICR5H1:1,ICR5H2:2,ICR5H3:3,ICR5H4:4,ICR5H5:5,ICR5H6:6,ICR5H7:7,ICR5L:294,ICR5L0:0,ICR5L1:1,ICR5L2:2,ICR5L3:3,ICR5L4:4,ICR5L5:5,ICR5L6:6,ICR5L7:7,IDRD:7,INT0:0,INT0addr:2,INT1:1,INT1addr:4,INT2:2,INT2addr:6,INT3:3,INT3addr:8,INT4:4,INT4addr:10,INT5:5,INT5addr:12,INT6:6,INT6addr:14,INT7:7,INT7addr:16,INTF0:0,INTF1:1,INTF2:2,INTF3:3,INTF4:4,INTF5:5,INTF6:6,INTF7:7,INT_VECTORS_SIZE:114,IOEND:511,ISC00:0,ISC01:1,ISC10:2,ISC11:3,ISC20:4,ISC21:5,ISC30:6,ISC31:7,ISC40:0,ISC41:1,ISC50:2,ISC51:3,ISC60:4,ISC61:5,ISC70:6,ISC71:7,IVCE:0,IVSEL:1,JTAGEN:6,JTD:7,JTRF:4,LARGEBOOTSTART:126976,LB1:0,LB2:1,MCUCR:53,MCUSR:52,MPCM0:0,MPCM1:0,MPCM2:0,MPCM3:0,MSTR:4,MUX0:0,MUX1:1,MUX2:2,MUX3:3,MUX4:4,MUX5:3,NRWW_START_ADDR:126976,NRWW_STOP_ADDR:131071,OC0Aaddr:42,OC0Baddr:44,OC1Aaddr:34,OC1Baddr:36,OC1Caddr:38,OC2Aaddr:26,OC2Baddr:28,OC3Aaddr:64,OC3Baddr:66,OC3Caddr:68,OC4Aaddr:84,OC4Baddr:86,OC4Caddr:88,OC5Aaddr:94,OC5Baddr:96,OC5Caddr:98,OCDEN:7,OCDR:49,OCDR0:0,OCDR1:1,OCDR2:2,OCDR3:3,OCDR4:4,OCDR5:5,OCDR6:6,OCDR7:7,OCF0A:1,OCF0B:2,OCF1A:1,OCF1B:2,OCF1C:3,OCF2A:1,OCF2B:2,OCF3A:1,OCF3B:2,OCF3C:3,OCF4A:1,OCF4B:2,OCF4C:3,OCF5A:1,OCF5B:2,OCF5C:3,OCIE0A:1,OCIE0B:2,OCIE1A:1,OCIE1B:2,OCIE1C:3,OCIE2A:1,OCIE2B:2,OCIE3A:1,OCIE3B:2,OCIE3C:3,OCIE4A:1,OCIE4B:2,OCIE4C:3,OCIE5A:1,OCIE5B:2,OCIE5C:3,OCR0A:39,OCR0A_0:0,OCR0A_1:1,OCR0A_2:2,OCR0A_3:3,OCR0A_4:4,OCR0A_5:5,OCR0A_6:6,OCR0A_7:7,OCR0B:40,OCR0B_0:0,OCR0B_1:1,OCR0B_2:2,OCR0B_3:3,OCR0B_4:4,OCR0B_5:5,OCR0B_6:6,OCR0B_7:7,OCR1AH:137,OCR1AL:136,OCR1BH:139,OCR1BL:138,OCR1CH:141,OCR1CL:140,OCR2A:179,OCR2AUB:3,OCR2A_0:0,OCR2A_1:1,OCR2A_2:2,OCR2A_3:3,OCR2A_4:4,OCR2A_5:5,OCR2A_6:6,OCR2A_7:7,OCR2B:180,OCR2BUB:2,OCR2B_0:0,OCR2B_1:1,OCR2B_2:2,OCR2B_3:3,OCR2B_4:4,OCR2B_5:5,OCR2B_6:6,OCR2B_7:7,OCR3AH:153,OCR3AL:152,OCR3BH:155,OCR3BL:154,OCR3CH:157,OCR3CL:156,OCR4AH:169,OCR4AL:168,OCR4BH:171,OCR4BL:170,OCR4CH:173,OCR4CL:172,OCR5AH:297,OCR5AL:296,OCR5BH:299,OCR5BL:298,OCR5CH:301,OCR5CL:300,OSCCAL:102,OVF0addr:46,OVF1addr:40,OVF2addr:30,OVF3addr:70,OVF4addr:90,OVF5addr:100,PA0:0,PA1:1,PA2:2,PA3:3,PA4:4,PA5:5,PA6:6,PA7:7,PAGESIZE:128,PB0:0,PB1:1,PB2:2,PB3:3,PB4:4,PB5:5,PB6:6,PB7:7,PC0:0,PC1:1,PC2:2,PC3:3,PC4:4,PC5:5,PC6:6,PC7:7,PCI0addr:18,PCI1addr:20,PCI2addr:22,PCICR:104,PCIE0:0,PCIE1:1,PCIE2:2,PCIF0:0,PCIF1:1,PCIF2:2,PCIFR:27,PCINT0:0,PCINT1:1,PCINT10:2,PCINT11:3,PCINT12:4,PCINT13:5,PCINT14:6,PCINT15:7,PCINT16:0,PCINT17:1,PCINT18:2,PCINT19:3,PCINT2:2,PCINT20:4,PCINT21:5,PCINT22:6,PCINT23:7,PCINT3:3,PCINT4:4,PCINT5:5,PCINT6:6,PCINT7:7,PCINT8:0,PCINT9:1,PCMSK0:107,PCMSK1:108,PCMSK2:109,PD0:0,PD1:1,PD2:2,PD3:3,PD4:4,PD5:5,PD6:6,PD7:7,PE0:0,PE1:1,PE2:2,PE3:3,PE4:4,PE5:5,PE6:6,PE7:7,PF0:0,PF1:1,PF2:2,PF3:3,PF4:4,PF5:5,PF6:6,PF7:7,PG0:0,PG1:1,PG2:2,PG3:3,PG4:4,PG5:5,PGERS:1,PGWRT:2,PH0:0,PH1:1,PH2:2,PH3:3,PH4:4,PH5:5,PH6:6,PH7:7,PINA:0,PINA0:0,PINA1:1,PINA2:2,PINA3:3,PINA4:4,PINA5:5,PINA6:6,PINA7:7,PINB:3,PINB0:0,PINB1:1,PINB2:2,PINB3:3,PINB4:4,PINB5:5,PINB6:6,PINB7:7,PINC:6,PINC0:0,PINC1:1,PINC2:2,PINC3:3,PINC4:4,PINC5:5,PINC6:6,PINC7:7,PIND:9,PIND0:0,PIND1:1,PIND2:2,PIND3:3,PIND4:4,PIND5:5,PIND6:6,PIND7:7,PINE:12,PINE0:0,PINE1:1,PINE2:2,PINE3:3,PINE4:4,PINE5:5,PINE6:6,PINE7:7,PINF:15,PINF0:0,PINF1:1,PINF2:2,PINF3:3,PINF4:4,PINF5:5,PINF6:6,PINF7:7,PING:18,PING0:0,PING1:1,PING2:2,PING3:3,PING4:4,PING5:5,PINH:256,PINH0:0,PINH1:1,PINH2:2,PINH3:3,PINH4:4,PINH5:5,PINH6:6,PINH7:7,PINJ:259,PINJ0:0,PINJ1:1,PINJ2:2,PINJ3:3,PINJ4:4,PINJ5:5,PINJ6:6,PINJ7:7,PINK:262,PINK0:0,PINK1:1,PINK2:2,PINK3:3,PINK4:4,PINK5:5,PINK6:6,PINK7:7,PINL:265,PINL0:0,PINL1:1,PINL2:2,PINL3:3,PINL4:4,PINL5:5,PINL6:6,PINL7:7,PJ0:0,PJ1:1,PJ2:2,PJ3:3,PJ4:4,PJ5:5,PJ6:6,PJ7:7,PK0:0,PK1:1,PK2:2,PK3:3,PK4:4,PK5:5,PK6:6,PK7:7,PL0:0,PL1:1,PL2:2,PL3:3,PL4:4,PL5:5,PL6:6,PL7:7,PORF:0,PORTA:2,PORTA0:0,PORTA1:1,PORTA2:2,PORTA3:3,PORTA4:4,PORTA5:5,PORTA6:6,PORTA7:7,PORTB:5,PORTB0:0,PORTB1:1,PORTB2:2,PORTB3:3,PORTB4:4,PORTB5:5,PORTB6:6,PORTB7:7,PORTC:8,PORTC0:0,PORTC1:1,PORTC2:2,PORTC3:3,PORTC4:4,PORTC5:5,PORTC6:6,PORTC7:7,PORTD:11,PORTD0:0,PORTD1:1,PORTD2:2,PORTD3:3,PORTD4:4,PORTD5:5,PORTD6:6,PORTD7:7,PORTE:14,PORTE0:0,PORTE1:1,PORTE2:2,PORTE3:3,PORTE4:4,PORTE5:5,PORTE6:6,PORTE7:7,PORTF:17,PORTF0:0,PORTF1:1,PORTF2:2,PORTF3:3,PORTF4:4,PORTF5:5,PORTF6:6,PORTF7:7,PORTG:20,PORTG0:0,PORTG1:1,PORTG2:2,PORTG3:3,PORTG4:4,PORTG5:5,PORTH:258,PORTH0:0,PORTH1:1,PORTH2:2,PORTH3:3,PORTH4:4,PORTH5:5,PORTH6:6,PORTH7:7,PORTJ:261,PORTJ0:0,PORTJ1:1,PORTJ2:2,PORTJ3:3,PORTJ4:4,PORTJ5:5,PORTJ6:6,PORTJ7:7,PORTK:264,PORTK0:0,PORTK1:1,PORTK2:2,PORTK3:3,PORTK4:4,PORTK5:5,PORTK6:6,PORTK7:7,PORTL:267,PORTL0:0,PORTL1:1,PORTL2:2,PORTL3:3,PORTL4:4,PORTL5:5,PORTL6:6,PORTL7:7,PRADC:0,PRR0:100,PRR1:101,PRSPI:2,PRTIM0:5,PRTIM1:3,PRTIM2:6,PRTIM3:3,PRTIM4:4,PRTIM5:5,PRTWI:7,PRUSART0:1,PRUSART1:0,PRUSART2:1,PRUSART3:2,PSR10:0,PSR2:1,PSRASY:1,PSRSYNC:0,PUD:4,RAMEND:8703,RAMPZ:59,RAMPZ0:0,RAMPZ1:1,REFS0:6,REFS1:7,RWWSB:6,RWWSRE:4,RWW_START_ADDR:0,RWW_STOP_ADDR:126975,RXB80:1,RXB81:1,RXB82:1,RXB83:1,RXC0:7,RXC1:7,RXC2:7,RXC3:7,RXCIE0:7,RXCIE1:7,RXCIE2:7,RXCIE3:7,RXEN0:4,RXEN1:4,RXEN2:4,RXEN3:4,SE:0,SECONDBOOTSTART:130048,SIGNATURE_000:30,SIGNATURE_001:152,SIGNATURE_002:1,SIGRD:5,SM0:1,SM1:2,SM2:3,SMALLBOOTSTART:130560,SMCR:51,SPCR:44,SPDR:46,SPDR0:0,SPDR1:1,SPDR2:2,SPDR3:3,SPDR4:4,SPDR5:5,SPDR6:6,SPDR7:7,SPE:6,SPH:62,SPI2X:0,SPIE:7,SPIEN:5,SPIF:7,SPIaddr:48,SPL:61,SPMCSR:55,SPMEN:0,SPMIE:7,SPMRaddr:80,SPR0:0,SPR1:1,SPSR:45,SRAM_SIZE:8192,SRAM_START:512,SRE:7,SREG:63,SREG_C:0,SREG_H:5,SREG_I:7,SREG_N:2,SREG_S:4,SREG_T:6,SREG_V:3,SREG_Z:1,SRL0:4,SRL1:5,SRL2:6,SRW00:0,SRW01:1,SRW10:2,SRW11:3,SUT0:4,SUT1:5,TCCR0A:36,TCCR0B:37,TCCR1A:128,TCCR1B:129,TCCR1C:130,TCCR2A:176,TCCR2B:177,TCCR3A:144,TCCR3B:145,TCCR3C:146,TCCR4A:160,TCCR4B:161,TCCR4C:162,TCCR5A:288,TCCR5B:289,TCCR5C:290,TCN2UB:4,TCNT0:38,TCNT0_0:0,TCNT0_1:1,TCNT0_2:2,TCNT0_3:3,TCNT0_4:4,TCNT0_5:5,TCNT0_6:6,TCNT0_7:7,TCNT1H:133,TCNT1L:132,TCNT2:178,TCNT2_0:0,TCNT2_1:1,TCNT2_2:2,TCNT2_3:3,TCNT2_4:4,TCNT2_5:5,TCNT2_6:6,TCNT2_7:7,TCNT3H:149,TCNT3L:148,TCNT4H:165,TCNT4L:164,TCNT5H:293,TCNT5L:292,TCR2AUB:1,TCR2BUB:0,THIRDBOOTSTART:129024,TIFR0:21,TIFR1:22,TIFR2:23,TIFR3:24,TIFR4:25,TIFR5:26,TIMSK0:110,TIMSK1:111,TIMSK2:112,TIMSK3:113,TIMSK4:114,TIMSK5:115,TOIE0:0,TOIE1:0,TOIE2:0,TOIE2A:0,TOIE3:0,TOIE4:0,TOIE5:0,TOV0:0,TOV1:0,TOV2:0,TOV3:0,TOV4:0,TOV5:0,TSM:7,TWA0:1,TWA1:2,TWA2:3,TWA3:4,TWA4:5,TWA5:6,TWA6:7,TWAM0:1,TWAM1:2,TWAM2:3,TWAM3:4,TWAM4:5,TWAM5:6,TWAM6:7,TWAMR:189,TWAMR0:1,TWAMR1:2,TWAMR2:3,TWAMR3:4,TWAMR4:5,TWAMR5:6,TWAMR6:7,TWAR:186,TWBR:184,TWBR0:0,TWBR1:1,TWBR2:2,TWBR3:3,TWBR4:4,TWBR5:5,TWBR6:6,TWBR7:7,TWCR:188,TWD0:0,TWD1:1,TWD2:2,TWD3:3,TWD4:4,TWD5:5,TWD6:6,TWD7:7,TWDR:187,TWEA:6,TWEN:2,TWGCE:0,TWIE:0,TWINT:7,TWIaddr:78,TWPS0:0,TWPS1:1,TWS3:3,TWS4:4,TWS5:5,TWS6:6,TWS7:7,TWSR:185,TWSTA:5,TWSTO:4,TWWC:3,TXB80:0,TXB81:0,TXB82:0,TXB83:0,TXC0:6,TXC1:6,TXC2:6,TXC3:6,TXCIE0:6,TXCIE1:6,TXCIE2:6,TXCIE3:6,TXEN0:3,TXEN1:3,TXEN2:3,TXEN3:3,U2X0:1,U2X1:1,U2X2:1,U2X3:1,UBRR0:0,UBRR0H:197,UBRR0L:196,UBRR1:1,UBRR10:2,UBRR11:3,UBRR1H:205,UBRR1L:204,UBRR2:2,UBRR2H:213,UBRR2L:212,UBRR3:3,UBRR3H:309,UBRR3L:308,UBRR4:4,UBRR5:5,UBRR6:6,UBRR7:7,UBRR8:0,UBRR9:1,UBRR_0:0,UBRR_1:1,UBRR_10:2,UBRR_11:3,UBRR_2:2,UBRR_3:3,UBRR_4:4,UBRR_5:5,UBRR_6:6,UBRR_7:7,UBRR_8:0,UBRR_9:1,UCPHA0:1,UCPHA1:1,UCPOL0:0,UCPOL1:0,UCPOL2:0,UCPOL3:0,UCSR0A:192,UCSR0B:193,UCSR0C:194,UCSR1A:200,UCSR1B:201,UCSR1C:202,UCSR2A:208,UCSR2B:209,UCSR2C:210,UCSR3A:304,UCSR3B:305,UCSR3C:306,UCSZ00:1,UCSZ01:2,UCSZ02:2,UCSZ10:1,UCSZ11:2,UCSZ12:2,UCSZ20:1,UCSZ21:2,UCSZ22:2,UCSZ30:1,UCSZ31:2,UCSZ32:2,UDORD0:2,UDORD1:2,UDR0:198,UDR0_0:0,UDR0_1:1,UDR0_2:2,UDR0_3:3,UDR0_4:4,UDR0_5:5,UDR0_6:6,UDR0_7:7,UDR1:206,UDR1_0:0,UDR1_1:1,UDR1_2:2,UDR1_3:3,UDR1_4:4,UDR1_5:5,UDR1_6:6,UDR1_7:7,UDR2:214,UDR2_0:0,UDR2_1:1,UDR2_2:2,UDR2_3:3,UDR2_4:4,UDR2_5:5,UDR2_6:6,UDR2_7:7,UDR3:310,UDR3_0:0,UDR3_1:1,UDR3_2:2,UDR3_3:3,UDR3_4:4,UDR3_5:5,UDR3_6:6,UDR3_7:7,UDRE0:5,UDRE0addr:52,UDRE1:5,UDRE1addr:74,UDRE2:5,UDRE2addr:104,UDRE3:5,UDRE3addr:110,UDRIE0:5,UDRIE1:5,UDRIE2:5,UDRIE3:5,UMSEL0:6,UMSEL00:6,UMSEL01:7,UMSEL1:7,UMSEL10:6,UMSEL11:7,UMSEL20:6,UMSEL21:7,UMSEL30:6,UMSEL31:7,UPE0:2,UPE1:2,UPE2:2,UPE3:2,UPM00:4,UPM01:5,UPM10:4,UPM11:5,UPM20:4,UPM21:5,UPM30:4,UPM31:5,URXC0addr:50,URXC1addr:72,URXC2addr:102,URXC3addr:108,USBS0:3,USBS1:3,USBS2:3,USBS3:3,UTXC0addr:54,UTXC1addr:76,UTXC2addr:106,UTXC3addr:112,WCOL:6,WDCE:4,WDE:3,WDIE:6,WDIF:7,WDP0:0,WDP1:1,WDP2:2,WDP3:5,WDRF:3,WDTCSR:96,WDTON:4,WDTaddr:24,WGM00:0,WGM01:1,WGM02:3,WGM10:0,WGM11:1,WGM12:3,WGM13:4,WGM20:0,WGM21:1,WGM22:3,WGM30:0,WGM31:1,WGM32:3,WGM33:4,WGM40:0,WGM41:1,WGM42:3,WGM43:4,WGM50:0,WGM51:1,WGM52:3,WGM53:4,XMBK:7,XMCRA:116,XMCRB:117,XMM0:0,XMM1:1,XMM2:2,XRAMEND:65535,_UBRR0:0,_UBRR1:1},so=z.RAMEND,co=z.SRAM_START,lo=z.FLASHEND;z.E2END;var uo=so-co+1+256;function fo(e,t,n){return{PIN:e,DDR:t,PORT:n,externalInterrupts:[]}}var po={A:fo(z.PINA+32,z.DDRA+32,z.PORTA+32),B:fo(z.PINB+32,z.DDRB+32,z.PORTB+32),C:fo(z.PINC+32,z.DDRC+32,z.PORTC+32),D:fo(z.PIND+32,z.DDRD+32,z.PORTD+32),E:fo(z.PINE+32,z.DDRE+32,z.PORTE+32),F:fo(z.PINF+32,z.DDRF+32,z.PORTF+32),G:fo(z.PING+32,z.DDRG+32,z.PORTG+32),H:fo(z.PINH,z.DDRH,z.PORTH),J:fo(z.PINJ,z.DDRJ,z.PORTJ),K:fo(z.PINK,z.DDRK,z.PORTK),L:fo(z.PINL,z.DDRL,z.PORTL)},B={TOV:0,OCFA:1,OCFB:2,OCFC:0,TOIE:0,OCIEA:1,OCIEB:2,OCIEC:0},mo={TOV:0,OCFA:1,OCFB:2,OCFC:3,TOIE:0,OCIEA:1,OCIEB:2,OCIEC:3},ho={0:0,1:1,2:8,3:64,4:256,5:1024,6:0,7:0},go={0:0,1:1,2:8,3:32,4:64,5:128,6:256,7:1024},_o={bits:8,captureInterrupt:0,compAInterrupt:z.OC0Aaddr,compBInterrupt:z.OC0Baddr,compCInterrupt:0,ovfInterrupt:z.OVF0addr,TIFR:z.TIFR0+32,OCRA:z.OCR0A+32,OCRB:z.OCR0B+32,OCRC:0,ICR:0,TCNT:z.TCNT0+32,TCCRA:z.TCCR0A+32,TCCRB:z.TCCR0B+32,TCCRC:0,TIMSK:z.TIMSK0,dividers:ho,compPortA:po.B.PORT,compPinA:7,compPortB:po.G.PORT,compPinB:5,compPortC:0,compPinC:0,externalClockPort:0,externalClockPin:0,...B},vo={bits:8,captureInterrupt:0,compAInterrupt:z.OC2Aaddr,compBInterrupt:z.OC2Baddr,compCInterrupt:0,ovfInterrupt:z.OVF2addr,TIFR:z.TIFR2+32,OCRA:z.OCR2A,OCRB:z.OCR2B,OCRC:0,ICR:0,TCNT:z.TCNT2,TCCRA:z.TCCR2A,TCCRB:z.TCCR2B,TCCRC:0,TIMSK:z.TIMSK2,dividers:go,compPortA:po.B.PORT,compPinA:4,compPortB:po.H.PORT,compPinB:6,compPortC:0,compPinC:0,externalClockPort:0,externalClockPin:0,...B};function yo(e){return{bits:16,captureInterrupt:e.capt,compAInterrupt:e.compA,compBInterrupt:e.compB,compCInterrupt:e.compC,ovfInterrupt:e.ovf,TIFR:e.TIFR+32,OCRA:e.OCRA,OCRB:e.OCRB,OCRC:e.OCRC,ICR:e.ICR,TCNT:e.TCNT,TCCRA:e.TCCRA,TCCRB:e.TCCRB,TCCRC:e.TCCRC,TIMSK:e.TIMSK,dividers:ho,compPortA:e.compPortA,compPinA:e.compPinA,compPortB:e.compPortB,compPinB:e.compPinB,compPortC:e.compPortC,compPinC:e.compPinC,externalClockPort:0,externalClockPin:0,...mo}}var bo=[_o,yo({compA:z.OC1Aaddr,compB:z.OC1Baddr,compC:z.OC1Caddr,ovf:z.OVF1addr,capt:z.ICP1addr,TIFR:z.TIFR1,TIMSK:z.TIMSK1,OCRA:z.OCR1AL,OCRB:z.OCR1BL,OCRC:z.OCR1CL,ICR:z.ICR1L,TCNT:z.TCNT1L,TCCRA:z.TCCR1A,TCCRB:z.TCCR1B,TCCRC:z.TCCR1C,compPortA:po.B.PORT,compPinA:5,compPortB:po.B.PORT,compPinB:6,compPortC:po.B.PORT,compPinC:7}),vo,yo({compA:z.OC3Aaddr,compB:z.OC3Baddr,compC:z.OC3Caddr,ovf:z.OVF3addr,capt:z.ICP3addr,TIFR:z.TIFR3,TIMSK:z.TIMSK3,OCRA:z.OCR3AL,OCRB:z.OCR3BL,OCRC:z.OCR3CL,ICR:z.ICR3L,TCNT:z.TCNT3L,TCCRA:z.TCCR3A,TCCRB:z.TCCR3B,TCCRC:z.TCCR3C,compPortA:po.E.PORT,compPinA:3,compPortB:po.E.PORT,compPinB:4,compPortC:po.E.PORT,compPinC:5}),yo({compA:z.OC4Aaddr,compB:z.OC4Baddr,compC:z.OC4Caddr,ovf:z.OVF4addr,capt:z.ICP4addr,TIFR:z.TIFR4,TIMSK:z.TIMSK4,OCRA:z.OCR4AL,OCRB:z.OCR4BL,OCRC:z.OCR4CL,ICR:z.ICR4L,TCNT:z.TCNT4L,TCCRA:z.TCCR4A,TCCRB:z.TCCR4B,TCCRC:z.TCCR4C,compPortA:po.H.PORT,compPinA:3,compPortB:po.H.PORT,compPinB:4,compPortC:po.H.PORT,compPinC:5}),yo({compA:z.OC5Aaddr,compB:z.OC5Baddr,compC:z.OC5Caddr,ovf:z.OVF5addr,capt:z.ICP5addr,TIFR:z.TIFR5,TIMSK:z.TIMSK5,OCRA:z.OCR5AL,OCRB:z.OCR5BL,OCRC:z.OCR5CL,ICR:z.ICR5L,TCNT:z.TCNT5L,TCCRA:z.TCCR5A,TCCRB:z.TCCR5B,TCCRC:z.TCCR5C,compPortA:po.L.PORT,compPinA:3,compPortB:po.L.PORT,compPinB:4,compPortC:po.L.PORT,compPinC:5})],xo={0:{type:ga.SingleEnded,channel:0},1:{type:ga.SingleEnded,channel:1},2:{type:ga.SingleEnded,channel:2},3:{type:ga.SingleEnded,channel:3},4:{type:ga.SingleEnded,channel:4},5:{type:ga.SingleEnded,channel:5},6:{type:ga.SingleEnded,channel:6},7:{type:ga.SingleEnded,channel:7},8:{type:ga.Temperature},30:{type:ga.Constant,voltage:1.1},31:{type:ga.Constant,voltage:0}},So={ADMUX:z.ADMUX,ADCSRA:z.ADCSRA,ADCSRB:z.ADCSRB,ADCL:z.ADCL,ADCH:z.ADCH,DIDR0:z.DIDR0,adcInterrupt:z.ADCCaddr,numChannels:16,muxInputMask:31,muxChannels:xo,adcReferences:[ha.AREF,ha.AVCC,ha.Reserved,ha.Internal1V1]};z.INT0addr,z.INT1addr,z.INT2addr,z.INT3addr,z.INT4addr,z.INT5addr,z.INT6addr,z.INT7addr,z.PCI0addr,z.PCI1addr,z.PCI2addr,z.WDTaddr,z.OC2Aaddr,z.OC2Baddr,z.OVF2addr,z.ICP1addr,z.OC1Aaddr,z.OC1Baddr,z.OC1Caddr,z.OVF1addr,z.OC0Aaddr,z.OC0Baddr,z.OVF0addr,z.SPIaddr,z.URXC0addr,z.UDRE0addr,z.UTXC0addr,z.ACIaddr,z.ADCCaddr,z.ERDYaddr,z.ICP3addr,z.OC3Aaddr,z.OC3Baddr,z.OC3Caddr,z.OVF3addr,z.URXC1addr,z.UDRE1addr,z.UTXC1addr,z.TWIaddr,z.SPMRaddr,z.ICP4addr,z.OC4Aaddr,z.OC4Baddr,z.OC4Caddr,z.OVF4addr,z.ICP5addr,z.OC5Aaddr,z.OC5Baddr,z.OC5Caddr,z.OVF5addr,z.URXC2addr,z.UDRE2addr,z.UTXC2addr,z.URXC3addr,z.UDRE3addr,z.UTXC3addr;function Co(e,t){let n=new Map;for(let[r,i]of e){if(i.file!==t)continue;let e=n.get(i.line);(e===void 0||r<e)&&n.set(i.line,r)}return n}var wo=class extends Error{},To={JMP:2,CALL:2,LDS:2,STS:2};function Eo(e){return To[e]??1}var Do={rdRr:[`ADC`,`ADD`,`AND`,`CP`,`CPC`,`CPSE`,`EOR`,`MOV`,`MUL`,`OR`,`SBC`,`SUB`],rdRrHigh:[`MULS`],rdRrMul:[`FMUL`,`FMULS`,`FMULSU`,`MULSU`],rdK:[`ANDI`,`CPI`,`LDI`,`ORI`,`SBCI`,`SBR`,`SUBI`,`CBR`],rdOnly:[`ASR`,`COM`,`DEC`,`INC`,`LSR`,`NEG`,`POP`,`PUSH`,`ROR`,`SWAP`],rdOnlyHigh:[`SER`],rdBit:[`BLD`,`BST`],rrBit:[`SBRC`,`SBRS`],ioBit:[`CBI`,`SBI`,`SBIC`,`SBIS`],noOperand:[`BREAK`,`NOP`,`RET`,`RETI`,`SLEEP`,`WDR`,`IJMP`,`ICALL`,`EIJMP`,`EICALL`],sBit:[`BCLR`,`BSET`],branchGeneric:[`BRBC`,`BRBS`],branchFixedS:[`BRCC`,`BRCS`,`BREQ`,`BRGE`,`BRHC`,`BRHS`,`BRID`,`BRIE`,`BRLO`,`BRLT`,`BRMI`,`BRNE`,`BRPL`,`BRSH`,`BRTC`,`BRTS`,`BRVC`,`BRVS`],relJump:[`RJMP`,`RCALL`],absJump:[`JMP`,`CALL`],inOutIn:[`IN`],inOutOut:[`OUT`],adiwSbiw:[`ADIW`,`SBIW`],movw:[`MOVW`],ldsLoad:[`LDS`],stsStore:[`STS`],zRd:[`XCH`,`LAC`,`LAS`,`LAT`],ld:[`LD`],ldd:[`LDD`],st:[`ST`],std:[`STD`],lpm:[`LPM`],elpm:[`ELPM`],selfPair:[`CLR`,`LSL`,`ROL`,`TST`]},Oo=new Map;for(let[e,t]of Object.entries(Do))for(let n of t)Oo.set(n,e);function ko(e){return!!ca[e]||Oo.has(e)}function Ao(e,t){if(e>=0)return e;let n=2**t;return(e%n+n)%n}function jo(e,t=`main.asm`,n){let r=[],i=[],a=e=>{if(n){let t=e.trim().toLowerCase().replace(/^["']|["']$/g,``);for(let[e,r]of Object.entries(n))if(e.trim().toLowerCase()===t)return r}return Ti(e)},o;try{let n=new Ci,r=n.expand(`.include "m2560def.inc"`,t,a),s=n.expand(e,t,a);o=[...r,...s],i.push(...n.messages)}catch(e){let n=e;return r.push({file:n.file??t,line:n.line??0,message:n.message}),{success:!1,program:new Uint16Array,sourceMap:new Map,labels:new Map,errors:r,warnings:i}}try{o=Lo(o)}catch(e){return r.push({file:t,line:0,message:e.message}),{success:!1,program:new Uint16Array,sourceMap:new Map,labels:new Map,errors:r,warnings:i}}let s=new Map;{let e=0,n=co,a=0,c=`CSEG`,l=[],u=()=>l.length?l[l.length-1].taken:!0,d=()=>c===`CSEG`?e:c===`DSEG`?n:a,f={resolveSymbol(e){if(e.toUpperCase()===`PC`)return d();let t=s.get(e.toUpperCase());if(!t)throw new di(`undefined symbol '${e}'`);return t.value}},p=e=>gi(e,f);for(let t=0;t<o.length;t++){let{text:f,file:m,line:h}=o[t];try{let{label:t,rest:r}=No(f),o=r.trim(),g=/^\.(\w+)\s*(.*)$/.exec(o),_=g?g[1].toLowerCase():null;if(_===`if`||_===`ifdef`||_===`ifndef`){let e=u(),t=_===`if`?e&&p(g[2])!==0:e&&s.has(g[2].trim().toUpperCase())===(_===`ifdef`);l.push({parentActive:e,taken:t,anyTaken:t});continue}if(_===`elif`){if(!l.length)throw new wo(`.elif without .if/.ifdef/.ifndef`);let e=l[l.length-1];if(!e.parentActive||e.anyTaken)e.taken=!1;else{let t=p(g[2])!==0;e.taken=t,t&&(e.anyTaken=!0)}continue}if(_===`else`){if(!l.length)throw new wo(`.else without .if`);let e=l[l.length-1];!e.parentActive||e.anyTaken?e.taken=!1:(e.taken=!0,e.anyTaken=!0);continue}if(_===`endif`){if(!l.length)throw new wo(`.endif without .if`);l.pop();continue}if(!u())continue;if(t){if(s.has(t.toUpperCase()))throw new wo(`symbol '${t}' redefined`);s.set(t.toUpperCase(),{kind:`label`,value:d(),segment:c,displayName:t})}if(o.length===0)continue;if(_){let t=g[2];switch(_){case`error`:throw new wo(Mo(t.trim()));case`warning`:case`message`:i.push({file:m,line:h,message:t.trim()});continue;case`cseg`:c=`CSEG`;continue;case`dseg`:c=`DSEG`;continue;case`eseg`:c=`ESEG`;continue;case`org`:{let r=Math.trunc(p(t.trim()));c===`CSEG`?e=r:c===`DSEG`?n=r:a=r;continue}case`equ`:case`set`:{let e=/^(\w+)\s*=\s*(.+)$/.exec(t.trim());if(!e)throw new wo(`malformed .${_} (expected NAME = expr)`);s.set(e[1].toUpperCase(),{kind:`equ`,value:p(e[2])});continue}case`def`:{let e=/^(\w+)\s*=\s*[rR](\d+)$/.exec(t.trim());if(!e)throw new wo(`malformed .def (expected NAME = Rn)`);s.set(e[1].toUpperCase(),{kind:`def`,value:parseInt(e[2],10)});continue}case`undef`:s.delete(t.trim().toUpperCase());continue;case`byte`:c!==`DSEG`&&i.push({file:m,line:h,message:`.byte used outside .dseg`}),n+=Math.trunc(p(t.trim()));continue;case`db`:{let n=Fo(t);c===`CSEG`?e+=Math.ceil(n/2):c===`ESEG`&&(a+=n);continue}case`dw`:{let n=_i(t).filter(e=>e.length>0);c===`CSEG`?e+=n.length:c===`ESEG`&&(a+=n.length*2);continue}case`device`:case`list`:case`nolist`:case`listmac`:case`exit`:case`macro`:case`endmacro`:case`endm`:continue;default:i.push({file:m,line:h,message:`unknown directive .${_} ignored`});continue}}let{mnemonic:v}=Po(o),y=v.toUpperCase();if(!ko(y))throw new wo(`unknown instruction '${v}'`);c===`CSEG`&&(e+=Eo(y))}catch(e){r.push({file:m,line:h,message:e.message})}}l.length&&r.push({file:t,line:o.length,message:`unterminated .if (missing .endif)`})}let c=new Uint16Array(lo+1),l=new Map;{let e=0,t=co,n=0,i=`CSEG`,a=[],u=()=>a.length?a[a.length-1].taken:!0,d=()=>i===`CSEG`?e:i===`DSEG`?t:n,f=new Map(s),p={resolveSymbol(e){if(e.toUpperCase()===`PC`)return d();let t=f.get(e.toUpperCase());if(!t)throw new di(`undefined symbol '${e}'`);return t.value}},m=e=>gi(e,p),h=(e,t,n,r)=>{e>=0&&e<c.length&&(c[e]=t&65535,l.set(e,{file:n,line:r}))};for(let c=0;c<o.length;c++){let{text:l,file:d,line:p}=o[c],{rest:g}=No(l),_=g.trim(),v=/^\.(\w+)\s*(.*)$/.exec(_),y=v?v[1].toLowerCase():null;try{if(y===`if`||y===`ifdef`||y===`ifndef`){let e=u(),t=y===`if`?e&&m(v[2])!==0:e&&f.has(v[2].trim().toUpperCase())===(y===`ifdef`);a.push({parentActive:e,taken:t,anyTaken:t});continue}if(y===`elif`){if(a.length){let e=a[a.length-1];if(!e.parentActive||e.anyTaken)e.taken=!1;else{let t=m(v[2])!==0;e.taken=t,t&&(e.anyTaken=!0)}}continue}if(y===`else`){if(a.length){let e=a[a.length-1];!e.parentActive||e.anyTaken?e.taken=!1:(e.taken=!0,e.anyTaken=!0)}continue}if(y===`endif`){a.pop();continue}if(!u()||_.length===0)continue;if(y){let r=v[2];switch(y){case`cseg`:i=`CSEG`;continue;case`dseg`:i=`DSEG`;continue;case`eseg`:i=`ESEG`;continue;case`org`:{let a=Math.trunc(m(r.trim()));i===`CSEG`?e=a:i===`DSEG`?t=a:n=a;continue}case`byte`:t+=Math.trunc(m(r.trim()));continue;case`db`:{let t=Io(r,m);if(i===`CSEG`)for(let n=0;n<t.length;n+=2){let r=t[n],i=n+1<t.length?t[n+1]:0;h(e++,r|i<<8,d,p)}else i===`ESEG`&&(n+=t.length);continue}case`dw`:{let t=_i(r).filter(e=>e.length>0);for(let r of t){let t=Math.trunc(m(r));i===`CSEG`?h(e++,t,d,p):i===`ESEG`&&(n+=2)}continue}case`equ`:case`set`:{let e=/^(\w+)\s*=\s*(.+)$/.exec(r.trim());e&&f.set(e[1].toUpperCase(),{kind:`equ`,value:m(e[2])});continue}case`def`:{let e=/^(\w+)\s*=\s*[rR](\d+)$/.exec(r.trim());e&&f.set(e[1].toUpperCase(),{kind:`def`,value:parseInt(e[2],10)});continue}case`undef`:f.delete(r.trim().toUpperCase());continue;default:continue}}let{mnemonic:r,operandsText:o}=Po(_),c=r.toUpperCase();if(!ko(c))continue;let l=e,g=Ho(c,o,l,m,s);for(let e=0;e<g.length;e++)h(l+e,g[e],d,p);e+=g.length}catch(t){if(r.push({file:d,line:p,message:t.message}),y===null){let{mnemonic:t}=Po(_),n=t.toUpperCase();ko(n)&&(e+=Eo(n))}}}}let u=new Map;for(let e of s.values())e.kind===`label`&&u.set(e.displayName??`?`,{value:e.value,segment:e.segment});return{success:r.length===0,program:c,sourceMap:l,labels:u,errors:r,warnings:i}}function Mo(e){let t=vi(e);return t?String.fromCharCode(...t):e}function No(e){let t=/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$/.exec(e);return t?{label:t[1],rest:t[2]}:{label:null,rest:e}}function Po(e){let t=/^(\S+)\s*(.*)$/.exec(e.trim());return t?{mnemonic:t[1],operandsText:t[2]}:{mnemonic:``,operandsText:``}}function Fo(e){let t=_i(e).filter(e=>e.length>0),n=0;for(let e of t){let t=vi(e);n+=t?t.length:1}return n}function Io(e,t){let n=_i(e).filter(e=>e.length>0),r=[];for(let e of n){let n=vi(e);n?r.push(...n):r.push(Math.trunc(t(e))&255)}return r}function Lo(e){let t=new Map,n=[],r=0;for(;r<e.length;){let{text:i}=e[r],a=/^\s*\.macro\s+(\S+)/i.exec(i);if(a){let n=a[1].toUpperCase(),i=[];for(r++;r<e.length&&!/^\s*\.endm(acro)?\b/i.test(e[r].text);)i.push(e[r]),r++;r++,t.set(n,i);continue}let{label:o,rest:s}=No(i),c=/^\s*(\S+)\s*(.*)$/.exec(s);if(!o&&c&&t.has(c[1].toUpperCase())){let i=t.get(c[1].toUpperCase()),a=_i(c[2]).map(e=>e.trim());for(let t of i){let i=t.text;for(let e=0;e<a.length;e++)i=i.split(`@${e}`).join(a[e]);n.push({text:i,file:e[r].file,line:e[r].line})}r++;continue}n.push(e[r]),r++}return n}var Ro=/^[rR](\d{1,2})$/,zo={X:26,Y:28,Z:30};function Bo(e,t){let n=/^(\S+)\s*:\s*(\S+)$/.exec(e);if(n){let r=Bo(n[1],t),i=Bo(n[2],t);if(r===null||i===null)return null;if(r!==i+1)throw new wo(`register pair '${e}' is not two adjacent registers (high:low)`);return i}let r=t.get(e.toUpperCase());if(r&&r.kind===`def`)return r.value;let i=zo[e.toUpperCase()];if(i!==void 0)return i;let a=Ro.exec(e);if(a){let e=parseInt(a[1],10);if(e>=0&&e<=31)return e}return null}function Vo(e,t){let n=e.trim(),r=/^-([XYZxyz])$/.exec(n);if(r)return{kind:`ptr`,base:r[1].toUpperCase(),mode:`predec`};if(r=/^([XYZxyz])\+$/.exec(n),r)return{kind:`ptr`,base:r[1].toUpperCase(),mode:`postinc`};if(r=/^([XYZxyz])$/.exec(n),r)return{kind:`ptr`,base:r[1].toUpperCase(),mode:`plain`};if(r=/^([XYZxyz])\s*\+\s*(.+)$/.exec(n),r){let e=Math.trunc(t(r[2]));return{kind:`ptr`,base:r[1].toUpperCase(),mode:`disp`,disp:e}}return null}function Ho(e,t,n,r,i){let a=_i(t).filter(e=>e.length>0);if(ca[e]){let{set:t,s:n}=ca[e];return sa[t?`BSET`:`BCLR`]([{kind:`imm`,n}])}let o=Oo.get(e),s=e=>{let t=Bo(e.trim(),i);if(t===null)throw new wo(`expected a register, got '${e}'`);return{kind:`reg`,n:t}},c=(e,t)=>{let n=Math.trunc(r(e.trim()));return t!==void 0&&(n=Ao(n,t)),{kind:`imm`,n}},l=e=>{let t=Vo(e.trim(),r);if(!t)throw new wo(`expected X/Y/Z addressing, got '${e}'`);return t},u=(e,t)=>({kind:`imm`,n:Math.trunc(r(e.trim()))-(n+1)});switch(o){case`rdRr`:case`rdRrHigh`:case`rdRrMul`:return Uo(a,2,e),sa[e]([s(a[0]),s(a[1])]);case`rdK`:return Uo(a,2,e),sa[e]([s(a[0]),c(a[1],8)]);case`rdOnly`:case`rdOnlyHigh`:return Uo(a,1,e),sa[e]([s(a[0])]);case`rdBit`:return Uo(a,2,e),sa[e]([s(a[0]),c(a[1],3)]);case`rrBit`:return Uo(a,2,e),sa[e]([s(a[0]),c(a[1],3)]);case`ioBit`:return Uo(a,2,e),sa[e]([c(a[0],5),c(a[1],3)]);case`noOperand`:return Uo(a,0,e),sa[e]([]);case`sBit`:return Uo(a,1,e),sa[e]([c(a[0],3)]);case`branchGeneric`:return Uo(a,2,e),sa[e]([c(a[0],3),u(a[1],7)]);case`branchFixedS`:return Uo(a,1,e),sa[e]([u(a[0],7)]);case`relJump`:return Uo(a,1,e),sa[e]([u(a[0],12)]);case`absJump`:return Uo(a,1,e),sa[e]([c(a[0],22)]);case`inOutIn`:return Uo(a,2,e),sa.IN([s(a[0]),c(a[1],6)]);case`inOutOut`:return Uo(a,2,e),sa.OUT([c(a[0],6),s(a[1])]);case`adiwSbiw`:return Uo(a,2,e),sa[e]([s(a[0]),c(a[1],6)]);case`movw`:return Uo(a,2,e),sa.MOVW([s(a[0]),s(a[1])]);case`ldsLoad`:return Uo(a,2,e),sa.LDS([s(a[0]),c(a[1],16)]);case`stsStore`:return Uo(a,2,e),sa.STS([c(a[0],16),s(a[1])]);case`zRd`:return Uo(a,2,e),sa[e]([l(a[0]),s(a[1])]);case`ld`:return Uo(a,2,e),sa.LD([s(a[0]),l(a[1])]);case`ldd`:return Uo(a,2,e),sa.LDD([s(a[0]),l(a[1])]);case`st`:return Uo(a,2,e),sa.ST([l(a[0]),s(a[1])]);case`std`:return Uo(a,2,e),sa.STD([l(a[0]),s(a[1])]);case`lpm`:return a.length===0?sa.LPM([]):(Uo(a,2,e),sa.LPM([s(a[0]),l(a[1])]));case`elpm`:return a.length===0?sa.ELPM([]):(Uo(a,2,e),sa.ELPM([s(a[0]),l(a[1])]));case`selfPair`:{Uo(a,1,e);let t=s(a[0]);return sa[{CLR:`EOR`,LSL:`ADD`,ROL:`ADC`,TST:`AND`}[e]]([t,t])}default:throw new wo(`internal: no parser for shape ${o}`)}}function Uo(e,t,n){if(e.length!==t)throw new wo(`${n}: expected ${t} operand(s), got ${e.length}`)}var Wo={right:0,up:131,down:307,left:481,select:741,none:1023},Go=class{program;cpu;ports;timers;adc;breakpoints=new Set;instructionsRetired=0;constructor(e){this.program=e,this.initPeripherals()}initPeripherals(){this.cpu=new fa(this.program,uo),this.cpu.SP=so,this.ports={};for(let[e,t]of Object.entries(po))this.ports[e]=new za(this.cpu,t);this.timers=bo.map(e=>new oo(this.cpu,e)),this.adc=new ka(this.cpu,So),this.adc.channelValues[0]=Wo.none/1024*5,this.instructionsRetired=0}reset(){this.initPeripherals()}setButton(e){this.adc.channelValues[0]=Wo[e]/1024*5}step(){ma(this.cpu),this.cpu.tick(),this.instructionsRetired++}run(e){for(let t=0;t<e;t++){if(t>0&&this.breakpoints.has(this.cpu.pc))return{hitBreakpoint:!0,ranInstructions:t};this.step()}return{hitBreakpoint:!1,ranInstructions:e}}},Ko={0:{port:`E`,bit:0},1:{port:`E`,bit:1},2:{port:`E`,bit:4},3:{port:`E`,bit:5},4:{port:`G`,bit:5},5:{port:`E`,bit:3},6:{port:`H`,bit:3},7:{port:`H`,bit:4},8:{port:`H`,bit:5},9:{port:`H`,bit:6},10:{port:`B`,bit:4},11:{port:`B`,bit:5},12:{port:`B`,bit:6},13:{port:`B`,bit:7},14:{port:`J`,bit:1},15:{port:`J`,bit:0},16:{port:`H`,bit:1},17:{port:`H`,bit:0},18:{port:`D`,bit:3},19:{port:`D`,bit:2},20:{port:`D`,bit:1},21:{port:`D`,bit:0},22:{port:`A`,bit:0},23:{port:`A`,bit:1},24:{port:`A`,bit:2},25:{port:`A`,bit:3},26:{port:`A`,bit:4},27:{port:`A`,bit:5},28:{port:`A`,bit:6},29:{port:`A`,bit:7},30:{port:`C`,bit:7},31:{port:`C`,bit:6},32:{port:`C`,bit:5},33:{port:`C`,bit:4},34:{port:`C`,bit:3},35:{port:`C`,bit:2},36:{port:`C`,bit:1},37:{port:`C`,bit:0},38:{port:`D`,bit:7},39:{port:`G`,bit:2},40:{port:`G`,bit:1},41:{port:`G`,bit:0},42:{port:`L`,bit:7},43:{port:`L`,bit:6},44:{port:`L`,bit:5},45:{port:`L`,bit:4},46:{port:`L`,bit:3},47:{port:`L`,bit:2},48:{port:`L`,bit:1},49:{port:`L`,bit:0},50:{port:`B`,bit:3},51:{port:`B`,bit:2},52:{port:`B`,bit:1},53:{port:`B`,bit:0},54:{port:`F`,bit:0},55:{port:`F`,bit:1},56:{port:`F`,bit:2},57:{port:`F`,bit:3},58:{port:`F`,bit:4},59:{port:`F`,bit:5},60:{port:`F`,bit:6},61:{port:`F`,bit:7},62:{port:`K`,bit:0},63:{port:`K`,bit:1},64:{port:`K`,bit:2},65:{port:`K`,bit:3},66:{port:`K`,bit:4},67:{port:`K`,bit:5},68:{port:`K`,bit:6},69:{port:`K`,bit:7}};function qo(e){let t=Ko[e];return{port:t.port,bit:t.bit}}var Jo={rs:qo(8),en:qo(9),d4:qo(4),d5:qo(5),d6:qo(6),d7:qo(7)},Yo=[0,64],Xo=40,Zo=class{ddram=new Uint8Array(80).fill(32);cgram=new Uint8Array(64);addressCounter=0;inCgramMode=!1;entryIncrement=!0;displayOn=!0;cursorOn=!1;blinkOn=!1;displayShift=0;lastEn=!1;nibbleHigh=null;ports;pins;onChange=()=>{};constructor(e,t=Jo){this.ports=e,this.pins=t;let n=new Set([t.rs.port,t.en.port,t.d4.port,t.d5.port,t.d6.port,t.d7.port]);for(let e of n)this.ports[e]?.addListener(()=>this.sample())}readBit(e){let t=this.ports[e.port];return t?t.pinState(e.bit)===Ia.High:!1}sample(){let e=this.readBit(this.pins.en);if(this.lastEn&&!e){let e=this.readBit(this.pins.rs),t=!!this.readBit(this.pins.d4)|(this.readBit(this.pins.d5)?2:0)|(this.readBit(this.pins.d6)?4:0)|(this.readBit(this.pins.d7)?8:0);this.latchNibble(e,t)}this.lastEn=e}latchNibble(e,t){if(this.nibbleHigh===null){this.nibbleHigh=t;return}let n=this.nibbleHigh<<4|t;this.nibbleHigh=null,e?this.writeData(n):this.writeCommand(n),this.onChange()}advanceAddress(e){if(this.inCgramMode){this.addressCounter=this.addressCounter+e&63;return}let t=this.addressCounter+e;e>0?t===40?t=64:t===104&&(t=0):t===63?t=39:t===-1&&(t=103),this.addressCounter=t}writeCommand(e){if(e&128)this.addressCounter=e&127,this.inCgramMode=!1;else if(e&64)this.addressCounter=e&63,this.inCgramMode=!0;else if(!(e&32))if(e&16){let t=(e&8)!=0,n=e&4?1:-1;t?this.displayShift=(this.displayShift+n+Xo)%Xo:this.advanceAddress(n)}else e&8?(this.displayOn=(e&4)!=0,this.cursorOn=(e&2)!=0,this.blinkOn=(e&1)!=0):e&4?this.entryIncrement=(e&2)!=0:e&2?(this.addressCounter=0,this.displayShift=0):e&1&&(this.ddram.fill(32),this.addressCounter=0,this.displayShift=0,this.entryIncrement=!0)}writeData(e){this.inCgramMode?this.cgram[this.addressCounter&63]=e:this.ddram[this.addressCounter&127]=e,this.advanceAddress(this.entryIncrement?1:-1)}getDisplayState(){let e=new Uint8Array(32);for(let t=0;t<2;t++)for(let n=0;n<16;n++){let r=(n+this.displayShift)%Xo;e[t*16+n]=this.ddram[Yo[t]+r]}let t=this.addressCounter,n=+(t>=64),r=(t-Yo[n]-this.displayShift+Xo)%Xo%16;return{characters:e,cursor:this.cursorOn,blink:this.blinkOn,cursorX:r,cursorY:n,displayOn:this.displayOn}}},Qo={"led-cycle-demo.asm":`.cseg\r
+.org 0\r
+\r
+		ldi r16, 0xFF\r
+		sts DDRL, r16\r
+		out DDRB, r16\r
+\r
+loop:	ldi r16, 0b10000000\r
+		sts PORTL, r16\r
+		ldi r16, 0b00000010\r
+		out PORTB, r16\r
+\r
+		ldi r17, 0x0F\r
+l1:		ldi r18, 0xFF\r
+l2:		ldi r19, 0xFF\r
+l3:		nop\r
+		nop\r
+		nop\r
+		nop\r
+		nop\r
+		nop\r
+		dec r19\r
+		brne l3\r
+		dec r18\r
+		brne l2\r
+		dec r17\r
+		brne l1 	\r
+\r
+		ldi r16, 0x00\r
+		sts PORTL, r16\r
+		out PORTB ,r16\r
+\r
+		ldi r17, 0x0F\r
+x1:		ldi r18, 0xFF\r
+x2:		ldi r19, 0xFF\r
+x3:		nop\r
+		nop\r
+		nop\r
+		nop\r
+		nop\r
+		nop\r
+		dec r19\r
+		brne x3\r
+		dec r18\r
+		brne x2\r
+		dec r17\r
+		brne x1 	\r
+\r
+\r
+done:	jmp loop\r
 `,"lcd/hello_world.asm":`#define LCD_LIBONLY\r
 ; An excruciatingly verbose "hello, world!"\r
 ; program that uses the Arduino mega2560\r
@@ -10216,815 +10171,95 @@ start:\r
 	;\r
 stop:\r
 	rjmp stop\r
-`,"a2-signaling.asm":`; a2-signalling.asm\r
-; CSC 230: Summer 2026\r
-;\r
-; Student name:\r
-; Student ID:\r
-; Date of completed work:\r
-;\r
-; *******************************\r
-; Code provided for Assignment #2\r
-;\r
-; Author: Mike Zastre (13 June 2026)\r
-;\r
- \r
-; This skeleton of an assembly-language program is provided to help you\r
-; begin with the programming tasks for A#2. As with A#1, there are "DO\r
-; NOT TOUCH" sections. You are *not* to modify the lines within these\r
-; sections. The only exceptions are for specific changes changes\r
-; announced on Brightspace or in written permission from the course\r
-; instructor. *** Unapproved changes could result in incorrect code\r
-; execution during assignment evaluation, along with an assignment grade\r
-; of zero. ***\r
-\r
-.include "m2560def.inc"\r
-.cseg\r
-.org 0\r
-\r
-; ***************************************************\r
-; **** BEGINNING OF FIRST "STUDENT CODE" SECTION ****\r
-; ***************************************************\r
-\r
-	; initializion code will need to appear in this\r
-    ; section\r
-\r
-\r
-\r
-; ***************************************************\r
-; **** END OF FIRST "STUDENT CODE" SECTION **********\r
-; ***************************************************\r
-\r
-; ---------------------------------------------------\r
-; ---- TESTING SECTIONS OF THE CODE -----------------\r
-; ---- TO BE USED AS FUNCTIONS ARE COMPLETED. -------\r
-; ---------------------------------------------------\r
-; ---- YOU CAN SELECT WHICH TEST IS INVOKED ---------\r
-; ---- BY MODIFY THE rjmp INSTRUCTION BELOW. --------\r
-; -----------------------------------------------------\r
-\r
-	rjmp test_part_d\r
-\r
-	; Test code\r
-\r
-	
+`,"a2-signaling.asm":`; a2-signaling.asm
+; Simple public LED signaling demo for ATmega2560
+; Cycles between two LED patterns on PORTL
 
-test_part_a:
-	ldi r16, 0b00100001
-	rcall set_leds
-	rcall delay_long
+.cseg
+.org 0
 
-	clr r16
-	rcall set_leds
-	rcall delay_long
+start:
+    ldi r16, 0xFF
+    sts DDRL, r16     ; Set PORTL to output
 
-	ldi r16, 0b00111000
-	rcall set_leds
-	rcall delay_short
+loop:
+    ldi r16, 0b10101010
+    sts PORTL, r16    ; Turn on alternating LEDs
+    rcall delay
 
-	clr r16
-	rcall set_leds
-	rcall delay_long
+    ldi r16, 0b01010101
+    sts PORTL, r16    ; Toggle alternating LEDs
+    rcall delay
 
-	ldi r16, 0b00100001
-	rcall set_leds
-	rcall delay_long
+    rjmp loop
 
-	clr r16
-	rcall set_leds
+delay:
+    ldi r17, 0x0F
+d1: ldi r18, 0xFF
+d2: ldi r19, 0xFF
+d3: dec r19
+    brne d3
+    dec r18
+    brne d2
+    dec r17
+    brne d1
+    ret
+`,"multi_timer.asm":`; multi_timer.asm
+; Simple public multi-timer example for ATmega2560
+; Cycles through multiple simulated software timers to toggle LEDs on PORTL
 
-	rjmp end
+.cseg
+.org 0
 
+start:
+    ldi r16, 0xFF
+    sts DDRL, r16     ; Set PORTL to output
+    clr r20           ; Timer 1 counter
+    clr r21           ; Timer 2 counter
 
-test_part_b:
-	ldi r17, 0b00101010
-	rcall slow_leds
-	ldi r17, 0b00010101
-	rcall slow_leds
-	ldi r17, 0b00101010
-	rcall slow_leds
-	ldi r17, 0b00010101
-	rcall slow_leds
+loop:
+    inc r20
+    cpi r20, 10
+    brne check_t2
+    clr r20
+    rcall toggle_led_0
 
-	rcall delay_long
-	rcall delay_long
+check_t2:
+    inc r21
+    cpi r21, 25
+    brne main_delay
+    clr r21
+    rcall toggle_led_1
 
-	ldi r17, 0b00101010
-	rcall fast_leds
-	ldi r17, 0b00010101
-	rcall fast_leds
-	ldi r17, 0b00101010
-	rcall fast_leds
-	ldi r17, 0b00010101
-	rcall fast_leds
-	ldi r17, 0b00101010
-	rcall fast_leds
-	ldi r17, 0b00010101
-	rcall fast_leds
-	ldi r17, 0b00101010
-	rcall fast_leds
-	ldi r17, 0b00010101
-	rcall fast_leds
+main_delay:
+    rcall delay
+    rjmp loop
 
-	rjmp end
+toggle_led_0:
+    lds r16, PORTL
+    ldi r17, 0b00000001
+    eor r16, r17
+    sts PORTL, r16
+    ret
 
-test_part_c:
-	ldi r16, 0b11111000
-	push r16
-	rcall leds_with_speed
-	pop r16
+toggle_led_1:
+    lds r16, PORTL
+    ldi r17, 0b00000010
+    eor r16, r17
+    sts PORTL, r16
+    ret
 
-	ldi r16, 0b11011100
-	push r16
-	rcall leds_with_speed
-	pop r16
-
-	ldi r20, 0b00100000
-test_part_c_loop:
-	push r20
-	rcall leds_with_speed
-	pop r20
-	lsr r20
-	brne test_part_c_loop
-
-	rjmp end
-
-
-test_part_d:
-	ldi r21, 'E'
-	push r21
-	rcall encode_letter
-	pop r21
-	push r25
-	rcall leds_with_speed
-	pop r25
-
-	rcall delay_long
-
-	ldi r21, 'A'
-	push r21
-	rcall encode_letter
-	pop r21
-	push r25
-	rcall leds_with_speed
-	pop r25
-
-	rcall delay_long
-
-
-	ldi r21, 'M'
-	push r21
-	rcall encode_letter
-	pop r21
-	push r25
-	rcall leds_with_speed
-	pop r25
-
-	rcall delay_long
-
-	ldi r21, 'H'
-	push r21
-	rcall encode_letter
-	pop r21
-	push r25
-	rcall leds_with_speed
-	pop r25
-
-	rcall delay_long
-
-	rjmp end
-
-
-test_part_e:
-	ldi r25, HIGH(WORD02 << 1)
-	ldi r24, LOW(WORD02 << 1)
-	rcall display_message
-	rjmp end
-
-end:
-    rjmp end
-
-
-\r
-\r
-\r
-\r
-\r
-\r
-; ****************************************************\r
-; **** BEGINNING OF SECOND "STUDENT CODE" SECTION ****\r
-; ****************************************************\r
-\r
-\r
-;data flow of the pins of port b and port l should always be output\r
-;they can be output because we turn on leds and never read from io in the program.\r
-\r
-\r
-set_leds: \r
-	; r16 holds bits 6-0 which maps to portl and portb -> r16:portl b5:b7, b4:b5, b3:b3, b2:b1 AND r16:portb b1:b3 b0:b1 <- ALL OF THIS was wrong but really needed to test on the mc to actually know\r
-	; ^^^ above is flipped\r
-\r
-	; first consider PORTL if bits 5,4,3,2 are set in r16 then their respective bits on portl need to be set\r
-	; since  sbi DDRL, 7 WONT WORK and sbi portl, pl7 probably also out of range (exceeds addr space) we need to set them with shifts\r
-	; lecture material 03-assmbly-intro-FINAL page 79: Example: ddrb = (1 << DDB0) | (1 << DDB3) | (1 << DDB5) <<< so do this for ddrl\r
-\r
-	;prologue we need to use r23 for register map of io for port l\r
-\r
-	push r23\r
-	clr r23; just to be sure the register is cleared for init of port l\r
-	\r
-\r
-	;init\r
-	ldi r23, (1 << DDL1) | (1 << DDL3) | (1 << DDL5) | (1 << DDL7) ; set bits 1,3,5,7 for the data direction of port l\r
-	sts ddrl, r23 ; store (0xaa) for data direction at addr 0x109\r
-	clr r23;\r
-\r
-\r
-	ldi r23, (1 << DDB1) | (1 << DDB3) ; set bits 1,3,5,7 for the data direction of port l\r
-\r
-	out ddrb, r23 ; using "out" for ddr(B) and port(B) because sts could not actually set the port I am guessing its because its a low memory addr?\r
-\r
-	;bit mask for port-l\r
-	clr r23 ; use r23 again to build the bit mask for port l. consequently if set_leds is called again with no bits set in r16 we should be fine to turn off all leds\r
-\r
-	sbrc r16, 0 ; skip if bit 5 is cleared in r16, else set bit 7\r
-		sbr r23, 0b10000000\r
-	sbrc r16, 1\r
-		sbr r23, 0b00100000\r
-	sbrc r16, 2\r
-		sbr r23, 0b00001000\r
-	sbrc r16, 3\r
-		sbr r23, 0b00000010\r
-	\r
-	sts portl, r23 ;store which pins (5,4,3,2) should be on for port l\r
-\r
-	;make sure to clear these!!!!!! on port b! pins (1,0)\r
-	;I cant think of a easy way to take two paths but we need to guarentee its on/off everytime so bit mask again\r
-	clr r23; guarentees that if leds (1,0) is on previously that we will have it off now\r
-	sbrc r16, 4 \r
-		sbr r23, 0b00001000\r
-	sbrc r16, 5 \r
-		sbr r23, 0b00000010\r
-	out portb, r23\r
-\r
-\r
-\r
-	; so far r16 is never written to\r
-	; epilogue we return the value of r23\r
-\r
-	pop r23\r
-	ret\r
-\r
-\r
-slow_leds:\r
-	; since r16 is used as param for set_leds we will need to mov r17 into r16\r
-	; we want to restore the value of r16 aswell\r
-	push r16\r
-\r
-	mov r16, r17\r
-	call set_leds\r
-	call delay_long\r
-	ldi r16, 0\r
-	call set_leds\r
-	\r
-	pop r16\r
-	ret\r
-\r
-\r
-fast_leds:\r
-	push r16\r
-\r
-	mov r16, r17\r
-	call set_leds\r
-	call delay_short\r
-	ldi r16, 0\r
-	call set_leds\r
-	\r
-	pop r16\r
-	ret\r
-\r
-\r
-leds_with_speed:\r
-	; in the a2 description "Do	not	worry about the	other two patterns possible for	the	left-most two bits as those	patterns may be	ignored."\r
-	; so just check the 6th bit if set then call slow_leds, otherwise call fast_leds, make sure to extract bits 0-5 to r17 prior to call\r
-	; to extract the parameter notice its on the stack before the call so it's before the return addr (3 bytes)\r
-	; use xl:xh 26,27 we want callee to restore these aswell\r
-	push r26\r
-	push r27\r
-	push r17\r
-	\r
-	;init stack ptr\r
-	in r26, spl\r
-	in r27, sph\r
-\r
-	;move stack ptr to parameter and load parameter value at addr stored in indirect reg x(26:27) after the offset of 6 bytes (3reg(r17 + r26:r27) + 3 ret addr + 1 offset)bytes\r
-	adiw r26, 7\r
-	ld r17,x\r
-	\r
-\r
-	;skip (jmp to call_slow_leds) if bit 6 is cleared in r17 (then call fast_leds) else , \r
-	;we want the outer param for fast/slow leds not r16 the inner set_leds parameter.\r
-	sbrc r17, 6\r
-		rjmp call_slow_leds\r
-	call fast_leds\r
-	rjmp done ;conditionally branch to else (fast_leds is called because bit 6 is cleared so rjmp past slow_leds)\r
-\r
-	call_slow_leds:\r
-		call slow_leds\r
-	done: ;skip past call fast_leds\r
-		\r
-	pop r17\r
-	pop r27; reverse order to restore (pop)\r
-	pop r26\r
-\r
-	ret\r
-\r
-\r
-; Note -- this function will only ever be tested\r
-; with upper-case letters, but it is a good idea\r
-; to anticipate some errors when programming (i.e. by\r
-; accidentally putting in lower-case letters). Therefore\r
-; the loop does explicitly check if the hyphen/dash occurs,\r
-; in which case it terminates with a code not found\r
-; for any legal letter.\r
-\r
-encode_letter:\r
-	;parameter is pushed onto stack and popped by caller\r
-\r
-	;prologue:\r
-	; x(26:27) to extract the value of the parameter from stack\r
-	; r16,r17 as a local variables *dont need to clear immediatly (until reuse of r17) as they are written with data initially\r
-	; z(30:31) for looking at the program memory for the PATTERNS\r
-	\r
-	; for simplicity if we push from lowest reg to highest then vice-versa its safe\r
-\r
-	push r16\r
-	push r17\r
-	push r26\r
-	push r27\r
-	push r30\r
-	push r31\r
-\r
-	;init stack ptr\r
-	in r26, spl\r
-	in r27, sph\r
-\r
-	adiw r26, 10\r
-	ld r17, x\r
-	; first we need the base addr of PATTERNS, then we can calculate an offset from the current letter to the start of the table with 'A' - r17\r
-	subi r17, 'A'; the letter "A" is ascii 0x45 which is the starting index (ex: "A" - "E" = 4th index)\r
-	; since each block of the pattern is 8 bytes (1 letter, byte 6 pattern bytes, 1 timing byte) we need to create offset that is 8 bytes * index\r
-	lsl r17; r17*2\r
-	lsl r17; r17*4\r
-	lsl r17; r17*8\r
-	\r
-	;load in base addr of table + offset into zl:zh indirect reg\r
-	;we need to load addr as a word not byte so multiply by 2 (in debugger we can see 0x0C00 is the right addr for where table starts in program mem)\r
-	; during comp time PATTERNS(0x600) * 2 can be pre-processed (cant happen with something like r16*2)\r
-	ldi r30, low(PATTERNS*2)\r
-	ldi r31, high(PATTERNS*2)\r
-\r
-	;add the offset to base addr yl + r17 (note since we dont have that many entries we should not expect a carry bit with yh)\r
-	add r30, r17\r
-\r
-	adiw z, 1; we dont need the first value of the table since its the letter\r
-	\r
-	; we need to find the next 6 pattern bytes and 1 timing byte and put into r25\r
-	\r
-	; we can reuse r17 as a counter\r
-	;ldi r17, 5; counter for reading every byte of offset PATTERNS AND for the nth position of r25\r
-\r
-	;clear output register\r
-	clr r25\r
-\r
-	;finally..... load from program mem (readonly) the pattern table values\r
-	\r
-	lpm r16, z+; post increment so z is z+1\r
-	cpi r16, 0x2e; check if pattern at left most led is off 2e == "." if not then set bit 5 of r25\r
-	breq skip1\r
-	sbr r25, 0b00100000\r
-	skip1:\r
-\r
-	lpm r16, z+\r
-	cpi r16, 0x2e\r
-	breq skip2\r
-	sbr r25, 0b00010000\r
-	skip2:\r
-\r
-	lpm r16, z+\r
-	cpi r16, 0x2e\r
-	breq skip3\r
-	sbr r25, 0b00001000\r
-	skip3:\r
-\r
-	lpm r16, z+\r
-	cpi r16, 0x2e\r
-	breq skip4\r
-	sbr r25, 0b00000100\r
-	skip4:\r
-\r
-	lpm r16, z+\r
-	cpi r16, 0x2e\r
-	breq skip5\r
-	sbr r25, 0b00000010\r
-	skip5:\r
-\r
-	lpm r16, z+ ; last pattern byte\r
-	cpi r16, 0x2e \r
-	breq skip6\r
-	sbr r25, 0b00000001\r
-	skip6:\r
-\r
-	lpm r16, z ; last byte for timing\r
-	cpi r16, 1; if timing byte is 1 then slow thus set bits 6 and 7\r
-	brne skip7 ;not equal then skip\r
-	sbr r25, 0b11000000	; we dont really need to change both bit 6 and bit 7 of r25 but for safety why not\r
-	skip7:\r
-\r
-	;at this point r25 is ready to be returned with the right value\r
-\r
-	; epilogue to pop addr LAST IN FIRST OUT (everything manual push'd needs to be pop'd)\r
-	pop r31\r
-	pop r30\r
-	pop r27\r
-	pop r26\r
-	pop r17\r
-	pop r16\r
-\r
-	ret\r
-	\r
-; r25 ends up with three seperate uses (as the parameter by caller, then as return value lastly, as parameter pushed onto stack \r
-display_message:\r
-	; each letter of the string is byte encoded we can find its respective table from PATTERNS\r
-	; params r24,r25 holds the low and high byte of the word addr\r
-\r
-	; prologue\r
-	; r30:r31 will be used for reading through the program memory\r
-	; r16 will be used as a local variable\r
-	; we do not need to use the stack pointer we dont store any parameters or return values on it\r
-	push r16\r
-	push r30\r
-	push r31\r
-	\r
-	;each "WORDX" has its own base addr so no offsets needed\r
-	; mov r24:r25 into zl:zh so we can load from program memory\r
-\r
-	mov zl, r24\r
-	mov zh, r25	\r
-	display_letter: \r
-\r
-	lpm r16, z+\r
-\r
-	cpi r16, 0\r
-	breq leave_loop\r
-	;to call encode_letter we need to make sure parameter r16 is saved and popped back before the next loop.\r
-	; since the function callee doesnt handle r16 the caller (here) should moreover, we need another\r
-\r
-	push r16\r
-	; HERE r25 is no longer used so its okay that it is what stores the return value\r
-	call encode_letter\r
-	pop r16\r
-	push r25 ; push the value we just got from encode_letter returned to r25 onto stack for leds_with_speed\r
-	call leds_with_speed\r
-	pop r25\r
-	\r
-	\r
-	rjmp display_letter\r
-	leave_loop:\r
-	; extract -> encode -> display -> repeat or terminate if r16 is 0\r
-\r
-	; by this point all letters should be finished displaying\r
-	; epilogue pop all local variables used in reverse push order\r
-	\r
-	pop r31\r
-	pop r30\r
-	pop r16\r
-	ret\r
-\r
-\r
-; ****************************************************\r
-; **** END OF SECOND "STUDENT CODE" SECTION **********\r
-; ****************************************************\r
-\r
-\r
-\r
-\r
-; =============================================\r
-; ==== BEGINNING OF "DO NOT TOUCH" SECTION ====\r
-; =============================================\r
-\r
-; about one second\r
-delay_long:\r
-	push r16\r
-\r
-	ldi r16, 14\r
-delay_long_loop:\r
-	rcall delay\r
-	dec r16\r
-	brne delay_long_loop\r
-\r
-	pop r16\r
-	ret\r
-\r
-\r
-; about 0.25 of a second\r
-delay_short:\r
-	push r16\r
-\r
-	ldi r16, 4\r
-delay_short_loop:\r
-	rcall delay\r
-	dec r16\r
-	brne delay_short_loop\r
-\r
-	pop r16\r
-	ret\r
-\r
-; When wanting about a 1/5th of a second delay, all other\r
-; code must call this function\r
-;\r
-delay:\r
-	rcall delay_busywait\r
-	ret\r
-\r
-\r
-; This function is ONLY called from "delay", and\r
-; never directly from other code. Really this is\r
-; nothing other than a specially-tuned triply-nested\r
-; loop. It provides the delay it does by virtue of\r
-; running on a mega2560 processor.\r
-;\r
-delay_busywait:\r
-	push r16\r
-	push r17\r
-	push r18\r
-\r
-	ldi r16, 0x08\r
-delay_busywait_loop1:\r
-	dec r16\r
-	breq delay_busywait_exit\r
-\r
-	ldi r17, 0xff\r
-delay_busywait_loop2:\r
-	dec r17\r
-	breq delay_busywait_loop1\r
-\r
-	ldi r18, 0xff\r
-delay_busywait_loop3:\r
-	dec r18\r
-	breq delay_busywait_loop2\r
-	rjmp delay_busywait_loop3\r
-\r
-delay_busywait_exit:\r
-	pop r18\r
-	pop r17\r
-	pop r16\r
-	ret\r
-\r
-\r
-; Some tables\r
-.cseg\r
-.org 0x600\r
-\r
-PATTERNS:\r
-	; LED pattern shown from left to right: "." means off, "o" means\r
-    ; on, 1 means long/slow, while 2 means short/fast.\r
-	.db "A", "..oo..", 1\r
-	.db "B", ".o..o.", 2\r
-	.db "C", "o.o...", 1\r
-	.db "D", ".....o", 1\r
-	.db "E", "oooooo", 1\r
-	.db "F", ".oooo.", 2\r
-	.db "G", "oo..oo", 2\r
-	.db "H", "..oo..", 2\r
-	.db "I", ".o..o.", 1\r
-	.db "J", ".....o", 2\r
-	.db "K", "....oo", 2\r
-	.db "L", "o.o.o.", 1\r
-	.db "M", "oooooo", 2\r
-	.db "N", "oo....", 1\r
-	.db "O", ".oooo.", 1\r
-	.db "P", "o.oo.o", 1\r
-	.db "Q", "o.oo.o", 2\r
-	.db "R", "oo..oo", 1\r
-	.db "S", "....oo", 1\r
-	.db "T", "..oo..", 1\r
-	.db "U", "o.....", 1\r
-	.db "V", "o.o.o.", 2\r
-	.db "W", "o.o...", 2\r
-	.db "W", "oo....", 2\r
-	.db "Y", "..oo..", 2\r
-	.db "Z", "o.....", 2\r
-	.db "-", "o...oo", 1   ; Just in case!\r
-\r
-WORD00: .db "HELLOWORLD", 0, 0\r
-WORD01: .db "THE", 0\r
-WORD02: .db "QUICK", 0\r
-WORD03: .db "BROWN", 0\r
-WORD04: .db "FOX", 0\r
-WORD05: .db "JUMPED", 0, 0\r
-WORD06: .db "OVER", 0, 0\r
-WORD07: .db "THE", 0\r
-WORD08: .db "LAZY", 0, 0\r
-WORD09: .db "DOG", 0\r
-\r
-; =======================================\r
-; ==== END OF "DO NOT TOUCH" SECTION ====\r
-; =======================================\r
-\r
-\r
-\r
-`,"multi_timer.asm":`;Provided by Dr. Mike Zastre\r
-;.include "m2560def.inc" <- Don't need to include this file since it is implicitly included.\r
-; To read the file, go to "Solution Explorer" on your left, click on arrow before "Dependencies"\r
-; Click on "m2560def.inc"\r
-.cseg\r
-.org 0\r
-\r
-; Purpose of this program is to blink three LEDs\r
-; at different rates, and to implement this \r
-; blinking by using (a) timers and (b) toggling\r
-; port bits.\r
-;\r
-; To make this a bit more tractable, we'll only\r
-; choose LEDS which are controlled via the same\r
-; port register. These three bits will be:\r
-; \r
-; * pin 42 (Port L, bit 7) -- blink 0.5 seconds;\r
-;   this will run on timer 3. However, we'll call\r
-;   this LED3 below.\r
-; * pin 44 (Port L, bit 5) -- blink 1.5 seconds\r
-;   this will run on timer 4. However, we'll call\r
-;   this LED4 below.\r
-; * pin 46 (Port L, bit 3) -- blink 3.0 seconds\r
-;   this will run on timer 5. However, we'll call\r
-;   this LED5 below.\r
-;\r
-; (Note that we aren't using the names LED1 and\r
-; LED2 -- we're trying to keep the names of delays,\r
-; LEDs, etc. match the names of their timers.)\r
-;\r
-; IMPORTANT NOTE: This program polls the timers\r
-; as part of its code. We can also implement the\r
-; same behavior via interrupts -- which might eventually\r
-; seem easier, but only once we understand the\r
-; asynchronous nature of interrupts.\r
-;\r
-\r
-\r
-.equ S_DDRL=0x10A\r
-.equ S_PORTL=0x10B\r
-\r
-#define DELAY3 0.5\r
-#define DELAY4 1.5\r
-#define DELAY5 3.0\r
-\r
-#define LED3 0b10000000\r
-#define LED4 0b00100000\r
-#define LED5 0b00001000\r
-\r
-.def temp=r19\r
-.def templow=r16\r
-.def temphigh=r17\r
-.def leds=r18\r
-\r
-	; Set up the stack. We should *always* set up\r
-	; the stack.\r
-	;\r
-	; Have I yet said that ...\r
-	; ... we should set up the stack?\r
-	;\r
-	ldi templow, low(RAMEND)\r
-	out SPL, templow\r
-	ldi temphigh, high(RAMEND)\r
-	out SPH, temphigh\r
-\r
-\r
-	; Let's set the Data Direction Register for \r
-	; the LEDs port register, and while we're at\r
-	; it, ensure the LEDs are *all* off.\r
-    ;\r
-\r
-	ldi temp, 0xff\r
-	sts S_DDRL, temp\r
-	out DDRB, temp  ;turn off two leds controled by portB, added by Victoria\r
-	ldi temp, 0b00000000\r
-	sts S_PORTL, temp ;turn off two leds controled by portB, added by Victoria\r
-	out PORTB,temp\r
-\r
-\r
-	; What follows is a bit of assembler arithmetic.\r
-	; All of the quantities below are calculated at\r
-	; assembly time.\r
-	;\r
-	; The PRESCALE value is set to 1024 -- that is,\r
-	; because base system clock runs at 16MHz and it is too\r
-    ; fast for our purposes (i.e., a 16-bit counter would\r
-    ; overflow in no time).  The PRESCALE value permits us\r
-    ; to use a "version" of the clock that runs slower but\r
-    ; without needing a separate and slower clock.\r
-	;\r
-\r
-#define CLOCK 16.0e6\r
-.equ PRESCALE_DIV=1024  ; implies CS[2:0] is 0b101\r
-\r
-.equ TOP3=int(0.5+(CLOCK/PRESCALE_DIV*DELAY3))\r
-.if TOP3>65535\r
-.error "TOP3 is out of range"\r
-.endif\r
-\r
-;TO DO:\r
-;Write similar code for TOP4 and TOP5 below:\r
-	\r
-	; We'll now set up the three timers. For each timer we\r
-	; must:\r
-	;\r
-	; (1) Set its Output Compare Register to the proper\r
-	;     TOP value for that register. Note carefully how\r
-	;     the high byte is output first, then the low\r
-	;     byte. THIS IS ABSOLUTELY NECESSARY!\r
-\r
-	; (2) Set its Timer Counter Control Registers to\r
-	;     the correct configuration (which for us really\r
-	;     means only setting values in the TCCR B register).\r
-	;     But just to be safe, we'll clear all the bits in\r
-	;     the TCCR A register as well.\r
-	;\r
-\r
-	; Timer 3\r
-	;\r
-	ldi temphigh, high(TOP3)\r
-	ldi templow, low(TOP3)\r
-	sts OCR3AH, temphigh\r
-	sts OCR3AL, templow\r
-\r
-	ldi temp, 0\r
-	sts TCCR3A, temp ;p154 of the datasheet, all 8 bits of TCCR3A are set to 0\r
-\r
-	; Note the syntax below. The mnemonics are defined\r
-	; within m2560def.inc, and represent bit positions\r
-	; in the register. e.g. on line 1226, CS32 is defined as: \r
-	;.equ CS32 = 2; Prescaler source of Timer/Counter 3\r
-	;\r
-	ldi temp, (1 << WGM32) | (1 << CS32) | (1 << CS30)\r
-	sts TCCR3B, temp ; set register TCCR3B to 0b00001101\r
-\r
-\r
-	; Timer 4\r
-	;\r
-;TO DO:\r
-;Write similar code for TOP4 below:\r
-\r
-\r
-	; Timer 5\r
-	;\r
-;TO DO:\r
-;Write similar code for TOP5 below:\r
-\r
-\r
-	clr leds\r
-\r
-\r
-main_loop:\r
-check_timer_3:\r
-	in temp, TIFR3\r
-	sbrs temp, OCF3A\r
-	rjmp check_timer_4\r
-\r
-	; arrive here? Timer 3 reached its count\r
-	;\r
-	ldi temp, 1<<OCF3A ;clear bit 1 in TIFR3 by writing logical one to its bit position, P163 of the Datasheet\r
-	out TIFR3, temp\r
-\r
-	ldi temp, LED3 ;toggle bit 7 of portL\r
-	eor leds, temp\r
-\r
-\r
-check_timer_4:\r
-;TO DO:\r
-;Write similar code for TOP4 below:\r
-\r
-\r
-check_timer_5:\r
-	in temp, TIFR5\r
-	sbrs temp, OCF5A\r
-	rjmp set_leds  ;<- jump to set led lights\r
-\r
-	; arrive here? Timer 5 reached its count\r
-	;\r
-;TO DO:\r
-;Write similar code for TOP5 below:\r
-\r
-set_leds:\r
-	sts S_PORTL, leds\r
-\r
-skip_overflow:\r
-	rjmp main_loop\r
-	\r
-\r
-stop:\r
-	rjmp stop\r
-\r
+delay:
+    ldi r17, 0x05
+d1: ldi r18, 0xFF
+d2: ldi r19, 0xFF
+d3: dec r19
+    brne d3
+    dec r18
+    brne d2
+    dec r17
+    brne d1
+    ret
 `},$o=`main.asm`,es={characters:new Uint8Array(32).fill(32),cursor:!1,blink:!1,cursorX:0,cursorY:0,displayOn:!1},ts=null;function ns(){ts!==null&&(cancelAnimationFrame(ts),ts=null)}var V=ui((e,t)=>({source:Qo[`led-cycle-demo.asm`],projectFiles:{},activeFile:null,assembleResult:null,emulator:null,lcd:null,lcdState:es,running:!1,instructionsPerFrame:2e3,breakpointsByFile:{},generation:0,activeButton:`none`,statusMessage:`Not assembled yet.`,setSource:t=>e({source:t}),setActiveFile:t=>e({activeFile:t}),setActiveFileContent:n=>{let{activeFile:r}=t();e(r===null?{source:n}:e=>({projectFiles:{...e.projectFiles,[r]:n}}))},addProjectFile:n=>{let r=n.trim();if(!r||r.toLowerCase()===`main.asm`)return;let{projectFiles:i}=t();if(r in i){e({activeFile:r});return}e({projectFiles:{...i,[r]:`; ${r}\n`},activeFile:r})},removeProjectFile:n=>{let{projectFiles:r,activeFile:i,breakpointsByFile:a}=t();if(!(n in r))return;let o={...r};delete o[n];let s={...a};delete s[n],e({projectFiles:o,activeFile:i===n?null:i,breakpointsByFile:s})},loadExample:t=>{ns();let n=Qo[t];n!==void 0&&e({source:n,projectFiles:{},activeFile:null,assembleResult:null,emulator:null,lcd:null,running:!1,breakpointsByFile:{},statusMessage:`Loaded ${t} — click Assemble to build it.`})},assembleAndLoad:()=>{ns();let{source:n,projectFiles:r,breakpointsByFile:i}=t(),a=jo(n,$o,r);if(!a.success){e({assembleResult:a,emulator:null,lcd:null,running:!1,statusMessage:`Assembly failed: ${a.errors.length} error(s).`});return}let o=new Go(a.program);for(let[e,t]of Object.entries(i)){let n=Co(a.sourceMap,e);for(let e of t){let t=n.get(e);t!==void 0&&o.breakpoints.add(t)}}let s=new Zo(o.ports);s.onChange=()=>{e({lcdState:s.getDisplayState()})},e({assembleResult:a,emulator:o,lcd:s,lcdState:s.getDisplayState(),running:!1,generation:t().generation+1,statusMessage:`Assembled OK — ${a.warnings.length} warning(s).`})},step:()=>{let{emulator:n}=t();n&&(n.step(),e({generation:t().generation+1}))},stepOver:()=>{let{emulator:n}=t();if(!n)return;let r=n.cpu.SP;if(n.step(),n.cpu.SP<r){let e=r;for(let t=0;t<2e5&&n.cpu.SP<e;t++)n.step()}e({generation:t().generation+1})},play:()=>{let{emulator:n,running:r}=t();if(!n||r)return;e({running:!0,statusMessage:`Running…`});let i=()=>{let n=t();if(!n.running||!n.emulator)return;let{hitBreakpoint:r}=n.emulator.run(n.instructionsPerFrame);if(e({generation:n.generation+1}),r){e({running:!1,statusMessage:`Stopped at breakpoint (PC=0x${n.emulator.cpu.pc.toString(16)}).`});return}ts=requestAnimationFrame(i)};ts=requestAnimationFrame(i)},pause:()=>{ns(),e({running:!1,statusMessage:`Paused.`})},reset:()=>{ns();let{emulator:n,lcd:r}=t();n?.reset(),r&&e({lcdState:r.getDisplayState()}),e({running:!1,generation:t().generation+1,statusMessage:`Reset.`})},toggleBreakpointLine:(n,r)=>{let{breakpointsByFile:i,emulator:a,assembleResult:o}=t(),s=i[n]??new Set,c=new Set(s),l=c.has(r);if(l?c.delete(r):c.add(r),e({breakpointsByFile:{...i,[n]:c}}),a&&o){let e=Co(o.sourceMap,n).get(r);e!==void 0&&(l?a.breakpoints.delete(e):a.breakpoints.add(e))}},setButton:n=>{let{emulator:r}=t();r?.setButton(n),e({activeButton:n})},setSpeed:t=>e({instructionsPerFrame:t}),bumpGeneration:()=>e({generation:t().generation+1})})),rs=o((e=>{var t=Symbol.for(`react.transitional.element`);function n(e,n,r){var i=null;if(r!==void 0&&(i=``+r),n.key!==void 0&&(i=``+n.key),`key`in n)for(var a in r={},n)a!==`key`&&(r[a]=n[a]);else r=n;return n=r.ref,{$$typeof:t,type:e,key:i,ref:n===void 0?null:n,props:r}}e.jsx=n,e.jsxs=n})),H=o(((e,t)=>{t.exports=rs()}))();function is(){let e=V(e=>e.loadExample),t=V(e=>e.assembleAndLoad),n=V(e=>e.step),r=V(e=>e.stepOver),i=V(e=>e.play),a=V(e=>e.pause),o=V(e=>e.reset),s=V(e=>e.running),c=V(e=>e.emulator),l=V(e=>e.statusMessage),u=V(e=>e.instructionsPerFrame),d=V(e=>e.setSpeed);return(0,H.jsxs)(`div`,{className:`toolbar`,children:[(0,H.jsxs)(`label`,{className:`speed-label`,children:[`Example`,(0,H.jsxs)(`select`,{defaultValue:``,onChange:t=>t.target.value&&e(t.target.value),children:[(0,H.jsx)(`option`,{value:``,disabled:!0,children:`Load…`}),Object.keys(Qo).map(e=>(0,H.jsx)(`option`,{value:e,children:e},e))]})]}),(0,H.jsx)(`button`,{className:`btn primary`,onClick:t,children:`Assemble`}),(0,H.jsx)(`button`,{className:`btn`,onClick:i,disabled:!c||s,children:`▶ Run`}),(0,H.jsx)(`button`,{className:`btn`,onClick:a,disabled:!s,children:`⏸ Pause`}),(0,H.jsx)(`button`,{className:`btn`,onClick:n,disabled:!c||s,children:`Step`}),(0,H.jsx)(`button`,{className:`btn`,onClick:r,disabled:!c||s,children:`Step Over`}),(0,H.jsx)(`button`,{className:`btn`,onClick:o,disabled:!c,children:`Reset`}),(0,H.jsxs)(`label`,{className:`speed-label`,children:[`Speed`,(0,H.jsxs)(`select`,{value:u,onChange:e=>d(Number(e.target.value)),children:[(0,H.jsx)(`option`,{value:50,children:`Slow`}),(0,H.jsx)(`option`,{value:2e3,children:`Normal`}),(0,H.jsx)(`option`,{value:5e4,children:`Fast`}),(0,H.jsx)(`option`,{value:5e5,children:`Turbo`})]})]}),(0,H.jsx)(`div`,{className:`status-message`,children:l})]})}function as(e){let{margin:t,containerPadding:n,containerWidth:r,cols:i}=e;return(r-t[0]*(i-1)-n[0]*2)/i}function os(e,t,n){return Number.isFinite(e)?Math.round(t*e+Math.max(0,e-1)*n):e}function ss(e,t,n,r,i,a,o){let{margin:s,containerPadding:c,rowHeight:l}=e,u=as(e),d,f,p,m;if(o?(d=Math.round(o.width),f=Math.round(o.height)):(d=os(r,u,s[0]),f=os(i,l,s[1])),a?(p=Math.round(a.top),m=Math.round(a.left)):o?(p=Math.round(o.top),m=Math.round(o.left)):(p=Math.round((l+s[1])*n+c[1]),m=Math.round((u+s[0])*t+c[0])),!a&&!o){if(Number.isFinite(r)){let e=Math.round((u+s[0])*(t+r)+c[0])-m-d;e!==s[0]&&(d+=e-s[0])}if(Number.isFinite(i)){let e=Math.round((l+s[1])*(n+i)+c[1])-p-f;e!==s[1]&&(f+=e-s[1])}}return{top:p,left:m,width:d,height:f}}function cs(e,t,n,r,i){let{margin:a,containerPadding:o,cols:s,rowHeight:c,maxRows:l}=e,u=as(e),d=Math.round((n-o[0])/(u+a[0])),f=Math.round((t-o[1])/(c+a[1]));return d=ds(d,0,s-r),f=ds(f,0,l-i),{x:d,y:f}}function ls(e,t,n){let{margin:r,containerPadding:i,rowHeight:a}=e,o=as(e);return{x:Math.round((n-i[0])/(o+r[0])),y:Math.round((t-i[1])/(a+r[1]))}}function us(e,t,n){let{margin:r,rowHeight:i}=e,a=as(e);return{w:Math.max(1,Math.round((t+r[0])/(a+r[0]))),h:Math.max(1,Math.round((n+r[1])/(i+r[1])))}}function ds(e,t,n){return Math.max(Math.min(e,n),t)}function fs(e,t){return!(e.i===t.i||e.x+e.w<=t.x||e.x>=t.x+t.w||e.y+e.h<=t.y||e.y>=t.y+t.h)}function ps(e,t){for(let n=0;n<e.length;n++){let r=e[n];if(r!==void 0&&fs(r,t))return r}}function ms(e,t){return e.filter(e=>fs(e,t))}function hs(e,t){return t===`horizontal`?_s(e):t===`vertical`||t===`wrap`?gs(e):[...e]}function gs(e){return[...e].sort((e,t)=>e.y===t.y?e.x-t.x:e.y-t.y)}function _s(e){return[...e].sort((e,t)=>e.x===t.x?e.y-t.y:e.x-t.x)}function vs(e){let t=0;for(let n=0;n<e.length;n++){let r=e[n];if(r!==void 0){let e=r.y+r.h;e>t&&(t=e)}}return t}function ys(e,t){for(let n=0;n<e.length;n++){let r=e[n];if(r!==void 0&&r.i===t)return r}}function bs(e){return e.filter(e=>e.static===!0)}function xs(e){return{i:e.i,x:e.x,y:e.y,w:e.w,h:e.h,minW:e.minW,maxW:e.maxW,minH:e.minH,maxH:e.maxH,moved:!!e.moved,static:!!e.static,isDraggable:e.isDraggable,isResizable:e.isResizable,resizeHandles:e.resizeHandles,constraints:e.constraints,isBounded:e.isBounded}}function Ss(e){let t=Array(e.length);for(let n=0;n<e.length;n++){let r=e[n];r!==void 0&&(t[n]=xs(r))}return t}function Cs(e,t){let n=Array(e.length);for(let r=0;r<e.length;r++){let i=e[r];i!==void 0&&(t.i===i.i?n[r]=t:n[r]=i)}return n}function ws(e,t,n){let r=ys(e,t);return r?(r=n(xs(r)),[Cs(e,r),r]):[[...e],null]}function Ts(e,t){let n=bs(e);for(let r=0;r<e.length;r++){let i=e[r];if(i!==void 0)if(i.x+i.w>t.cols&&(i.x=t.cols-i.w),i.x<0&&(i.x=0,i.w=t.cols),!i.static)n.push(i);else for(;ps(n,i);)i.y++}return e}function Es(e,t,n,r,i,a,o,s,c){if(t.static&&t.isDraggable!==!0||t.y===r&&t.x===n)return[...e];let l=t.x,u=t.y;typeof n==`number`&&(t.x=n),typeof r==`number`&&(t.y=r),t.moved=!0;let d=hs(e,o);(o===`vertical`&&typeof r==`number`?u>=r:o===`horizontal`&&typeof n==`number`&&l>=n)&&(d=d.reverse());let f=ms(d,t),p=f.length>0;if(p&&c)return Ss(e);if(p&&a)return t.x=l,t.y=u,t.moved=!1,e;let m=[...e];for(let e=0;e<f.length;e++){let n=f[e];n!==void 0&&(n.moved||(m=n.static?Ds(m,n,t,i,o):Ds(m,t,n,i,o)))}return m}function Ds(e,t,n,r,i,a){let o=i===`horizontal`,s=i===`vertical`,c=t.static;if(r){r=!1;let a={x:o?Math.max(t.x-n.w,0):n.x,y:s?Math.max(t.y-n.h,0):n.y,w:n.w,h:n.h,i:`-1`},l=ps(e,a),u=l!==void 0&&l.y+l.h>t.y,d=l!==void 0&&t.x+t.w>l.x;if(!l)return Es(e,n,o?a.x:void 0,s?a.y:void 0,r,c,i);if(u&&s)return Es(e,n,void 0,n.y+1,r,c,i);if(u&&i===null)return t.y=n.y,n.y+=n.h,[...e];if(d&&o)return Es(e,t,n.x,void 0,r,c,i)}let l=o?n.x+1:void 0,u=s?n.y+1:void 0;return l===void 0&&u===void 0?[...e]:Es(e,n,l,u,r,c,i)}function Os(e,t,n){return Math.max(t,Math.min(n,e))}var ks=[{name:`gridBounds`,constrainPosition(e,t,n,{cols:r,maxRows:i}){return{x:Os(t,0,Math.max(0,r-e.w)),y:Os(n,0,Math.max(0,i-e.h))}},constrainSize(e,t,n,r,{cols:i,maxRows:a}){let o=r===`w`||r===`nw`||r===`sw`?e.x+e.w:i-e.x,s=r===`n`||r===`nw`||r===`ne`?e.y+e.h:a-e.y;return{w:Os(t,1,Math.max(1,o)),h:Os(n,1,Math.max(1,s))}}},{name:`minMaxSize`,constrainSize(e,t,n){return{w:Os(t,e.minW??1,e.maxW??1/0),h:Os(n,e.minH??1,e.maxH??1/0)}}}];function As(e,t,n,r,i){let a={x:n,y:r};for(let n of e)n.constrainPosition&&(a=n.constrainPosition(t,a.x,a.y,i));if(t.constraints)for(let e of t.constraints)e.constrainPosition&&(a=e.constrainPosition(t,a.x,a.y,i));return a}function js(e,t,n,r,i,a){let o={w:n,h:r};for(let n of e)n.constrainSize&&(o=n.constrainSize(t,o.w,o.h,i,a));if(t.constraints)for(let e of t.constraints)e.constrainSize&&(o=e.constrainSize(t,o.w,o.h,i,a));return o}function Ms({top:e,left:t,width:n,height:r}){let i=`translate(${t}px,${e}px)`;return{transform:i,WebkitTransform:i,MozTransform:i,msTransform:i,OTransform:i,width:`${n}px`,height:`${r}px`,position:`absolute`}}function Ns({top:e,left:t,width:n,height:r}){return{top:`${e}px`,left:`${t}px`,width:`${n}px`,height:`${r}px`,position:`absolute`}}function Ps(e){return e*100+`%`}function Fs(e,t,n,r){return e+n>r?t:n}function Is(e,t,n){return e<0?t:n}function Ls(e){return Math.max(0,e)}function Rs(e){return Math.max(0,e)}var zs=(e,t,n)=>{let{left:r,height:i,width:a}=t,o=e.top-(i-e.height);return{left:r,width:a,height:Is(o,e.height,i),top:Rs(o)}},Bs=(e,t,n)=>{let{top:r,left:i,height:a,width:o}=t;return{top:r,height:a,width:Fs(e.left,e.width,o,n),left:Ls(i)}},Vs=(e,t,n)=>{let{top:r,height:i,width:a}=t,o=e.left+e.width-a;return o<0?{height:i,width:e.left+e.width,top:Rs(r),left:0}:{height:i,width:a,top:Rs(r),left:o}},Hs=(e,t,n)=>{let{top:r,left:i,height:a,width:o}=t;return{width:o,left:i,height:Is(r,e.height,a),top:Rs(r)}},Us={n:zs,ne:(e,t,n)=>zs(e,Bs(e,t,n)),e:Bs,se:(e,t,n)=>Hs(e,Bs(e,t,n)),s:Hs,sw:(e,t,n)=>Hs(e,Vs(e,t)),w:Vs,nw:(e,t,n)=>zs(e,Vs(e,t))};function Ws(e,t,n,r){let i=Us[e];return i?i(t,{...t,...n},r):n}var Gs={type:`transform`,scale:1,calcStyle(e){return Ms(e)}},Ks={cols:12,rowHeight:150,margin:[10,10],containerPadding:null,maxRows:1/0},qs={enabled:!0,bounded:!1,threshold:3},Js={enabled:!0,handles:[`se`]},Ys={enabled:!1,defaultItem:{w:1,h:1}};function Xs(e,t,n,r,i){let a=r===`x`?`w`:`h`;t[r]+=1;let o=e.findIndex(e=>e.i===t.i),s=i??bs(e).length>0;for(let i=o+1;i<e.length;i++){let o=e[i];if(o!==void 0&&!o.static){if(!s&&o.y>t.y+t.h)break;fs(t,o)&&Xs(e,o,n+t[a],r,s)}}t[r]=n}function Zs(e,t,n,r){for(t.x=Math.max(t.x,0),t.y=Math.max(t.y,0),t.y=Math.min(r,t.y);t.y>0&&!ps(e,t);)t.y--;let i;for(;(i=ps(e,t))!==void 0;)Xs(n,t,i.y+i.h,`y`);return t.y=Math.max(t.y,0),t}function Qs(e,t,n,r){for(t.x=Math.max(t.x,0),t.y=Math.max(t.y,0);t.x>0&&!ps(e,t);)t.x--;let i;for(;(i=ps(e,t))!==void 0;)if(Xs(r,t,i.x+i.w,`x`),t.x+t.w>n)for(t.x=n-t.w,t.y++;t.x>0&&!ps(e,t);)t.x--;return t.x=Math.max(t.x,0),t}var $s={type:`vertical`,allowOverlap:!1,compact(e,t){let n=bs(e),r=vs(n),i=gs(e),a=Array(e.length);for(let t=0;t<i.length;t++){let o=i[t];if(o===void 0)continue;let s=xs(o);s.static||(s=Zs(n,s,i,r),r=Math.max(r,s.y+s.h),n.push(s));let c=e.indexOf(o);a[c]=s,s.moved=!1}return a}},ec={type:`horizontal`,allowOverlap:!1,compact(e,t){let n=bs(e),r=_s(e),i=Array(e.length);for(let a=0;a<r.length;a++){let o=r[a];if(o===void 0)continue;let s=xs(o);s.static||(s=Qs(n,s,t,r),n.push(s));let c=e.indexOf(o);i[c]=s,s.moved=!1}return i}},tc={type:null,allowOverlap:!1,compact(e,t){return Ss(e)}},nc={...$s,allowOverlap:!0,compact(e,t){return Ss(e)}},rc={...ec,allowOverlap:!0,compact(e,t){return Ss(e)}},ic={...tc,allowOverlap:!0};function ac(e,t=!1,n=!1){let r;return r=t?e===`vertical`?nc:e===`horizontal`?rc:ic:e===`vertical`?$s:e===`horizontal`?ec:tc,n?{...r,preventCollision:n}:r}var oc=o(((e,t)=>{(function(n,r){typeof e==`object`&&t!==void 0?r(e):typeof define==`function`&&define.amd?define([`exports`],r):(n=typeof globalThis<`u`?globalThis:n||self,r(n[`fast-equals`]={}))})(e,(function(e){function t(e){return function(t,n,r,i,a,o,s){return e(t,n,s)}}function n(e){return function(t,n,r,i){if(!t||!n||typeof t!=`object`||typeof n!=`object`)return e(t,n,r,i);var a=i.get(t),o=i.get(n);if(a&&o)return a===n&&o===t;i.set(t,n),i.set(n,t);var s=e(t,n,r,i);return i.delete(t),i.delete(n),s}}function r(e,t){var n={};for(var r in e)n[r]=e[r];for(var r in t)n[r]=t[r];return n}function i(e){return e.constructor===Object||e.constructor==null}function a(e){return typeof e.then==`function`}function o(e,t){return e===t||e!==e&&t!==t}var s=Object.prototype.toString;function c(e){var t=e.areArraysEqual,n=e.areDatesEqual,r=e.areMapsEqual,c=e.areObjectsEqual,l=e.areRegExpsEqual,u=e.areSetsEqual,d=e.createIsNestedEqual,f=d(p);function p(e,d,p){if(e===d)return!0;if(!e||!d||typeof e!=`object`||typeof d!=`object`)return e!==e&&d!==d;if(i(e)&&i(d))return c(e,d,f,p);var m=Array.isArray(e),h=Array.isArray(d);if(m||h)return m===h&&t(e,d,f,p);var g=s.call(e);return g===s.call(d)?g===`[object Date]`?n(e,d,f,p):g===`[object RegExp]`?l(e,d,f,p):g===`[object Map]`?r(e,d,f,p):g===`[object Set]`?u(e,d,f,p):g===`[object Object]`||g===`[object Arguments]`?a(e)||a(d)?!1:c(e,d,f,p):g===`[object Boolean]`||g===`[object Number]`||g===`[object String]`?o(e.valueOf(),d.valueOf()):!1:!1}return p}function l(e,t,n,r){var i=e.length;if(t.length!==i)return!1;for(;i-->0;)if(!n(e[i],t[i],i,i,e,t,r))return!1;return!0}var u=n(l);function d(e,t){return o(e.valueOf(),t.valueOf())}function f(e,t,n,r){var i=e.size===t.size;if(!i)return!1;if(!e.size)return!0;var a={},o=0;return e.forEach(function(s,c){if(i){var l=!1,u=0;t.forEach(function(i,d){!l&&!a[u]&&(l=n(c,d,o,u,e,t,r)&&n(s,i,c,d,e,t,r))&&(a[u]=!0),u++}),o++,i=l}}),i}var p=n(f),m=`_owner`,h=Object.prototype.hasOwnProperty;function g(e,t,n,r){var i=Object.keys(e),a=i.length;if(Object.keys(t).length!==a)return!1;for(var o;a-->0;){if(o=i[a],o===m){var s=!!e.$$typeof,c=!!t.$$typeof;if((s||c)&&s!==c)return!1}if(!h.call(t,o)||!n(e[o],t[o],o,o,e,t,r))return!1}return!0}var _=n(g);function v(e,t){return e.source===t.source&&e.flags===t.flags}function y(e,t,n,r){var i=e.size===t.size;if(!i)return!1;if(!e.size)return!0;var a={};return e.forEach(function(o,s){if(i){var c=!1,l=0;t.forEach(function(i,u){!c&&!a[l]&&(c=n(o,i,s,u,e,t,r))&&(a[l]=!0),l++}),i=c}}),i}var b=n(y),x=Object.freeze({areArraysEqual:l,areDatesEqual:d,areMapsEqual:f,areObjectsEqual:g,areRegExpsEqual:v,areSetsEqual:y,createIsNestedEqual:t}),S=Object.freeze({areArraysEqual:u,areDatesEqual:d,areMapsEqual:p,areObjectsEqual:_,areRegExpsEqual:v,areSetsEqual:b,createIsNestedEqual:t}),C=c(x);function w(e,t){return C(e,t,void 0)}var T=c(r(x,{createIsNestedEqual:function(){return o}}));function ee(e,t){return T(e,t,void 0)}var te=c(S);function ne(e,t){return te(e,t,new WeakMap)}var re=c(r(S,{createIsNestedEqual:function(){return o}}));function ie(e,t){return re(e,t,new WeakMap)}function ae(e){return c(r(x,e(x)))}function oe(e){var t=c(r(S,e(S)));return(function(e,n,r){return r===void 0&&(r=new WeakMap),t(e,n,r)})}e.circularDeepEqual=ne,e.circularShallowEqual=ie,e.createCustomCircularEqual=oe,e.createCustomEqual=ae,e.deepEqual=w,e.sameValueZeroEqual=o,e.shallowEqual=ee,Object.defineProperty(e,"__esModule",{value:!0})}))}));function sc(e={}){let{measureBeforeMount:t=!1,initialWidth:n=1280}=e,[r,i]=(0,_.useState)(n),[a,o]=(0,_.useState)(!t),s=(0,_.useRef)(null),c=(0,_.useRef)(null),l=(0,_.useCallback)(()=>{let e=s.current;if(e){let t=e.offsetWidth;i(t),a||o(!0)}},[a]);return(0,_.useEffect)(()=>{let e=s.current;if(e){if(l(),typeof ResizeObserver<`u`){let t=null;return c.current=new ResizeObserver(e=>{let n=e[0];if(n){let e=n.contentRect.width;t!==null&&cancelAnimationFrame(t),t=requestAnimationFrame(()=>{i(e),t=null})}}),c.current.observe(e),()=>{t!==null&&cancelAnimationFrame(t),c.current&&=(c.current.disconnect(),null)}}return()=>{c.current&&=(c.current.disconnect(),null)}}},[l]),{width:r,mounted:a,containerRef:s,measureWidth:l}}var cc=o(((e,t)=>{t.exports=`SECRET_DO_NOT_PASS_THIS_OR_YOU_WILL_BE_FIRED`})),lc=o(((e,t)=>{var n=cc();function r(){}function i(){}i.resetWarningCache=r,t.exports=function(){function e(e,t,r,i,a,o){if(o!==n){var s=Error("Calling PropTypes validators directly is not supported by the `prop-types` package. Use PropTypes.checkPropTypes() to call them. Read more at http://fb.me/use-check-prop-types");throw s.name=`Invariant Violation`,s}}e.isRequired=e;function t(){return e}var a={array:e,bigint:e,bool:e,func:e,number:e,object:e,string:e,symbol:e,any:e,arrayOf:t,element:e,elementType:e,instanceOf:t,node:e,objectOf:t,oneOf:t,oneOfType:t,shape:t,exact:t,checkPropTypes:i,resetWarningCache:r};return a.PropTypes=a,a}})),uc=o(((e,t)=>{t.exports=lc()()}));function dc(e){var t,n,r=``;if(typeof e==`string`||typeof e==`number`)r+=e;else if(typeof e==`object`)if(Array.isArray(e)){var i=e.length;for(t=0;t<i;t++)e[t]&&(n=dc(e[t]))&&(r&&(r+=` `),r+=n)}else for(n in e)e[n]&&(r&&(r+=` `),r+=n);return r}function fc(){for(var e,t,n=0,r=``,i=arguments.length;n<i;n++)(e=arguments[n])&&(t=dc(e))&&(r&&(r+=` `),r+=t);return r}var U=c(uc(),1),pc=c(m(),1);function mc(e,t){for(let n=0,r=e.length;n<r;n++)if(t.apply(t,[e[n],n,e]))return e[n]}function hc(e){return typeof e==`function`||Object.prototype.toString.call(e)===`[object Function]`}function gc(e){return typeof e==`number`&&!isNaN(e)}function _c(e){return parseInt(e,10)}function vc(e,t,n){if(e[t])return Error(`Invalid prop ${t} passed to ${n} - do not set this, set it on the child.`)}var yc=[`Moz`,`Webkit`,`O`,`ms`];function bc(e=`transform`){if(typeof window>`u`)return``;let t=window.document?.documentElement?.style;if(!t||e in t)return``;for(let n=0;n<yc.length;n++)if(xc(e,yc[n])in t)return yc[n];return``}function xc(e,t){return t?`${t}${Sc(e)}`:e}function Sc(e){let t=``,n=!0;for(let r=0;r<e.length;r++)n?(t+=e[r].toUpperCase(),n=!1):e[r]===`-`?n=!0:t+=e[r];return t}var Cc=bc(),wc=``;function Tc(e,t){wc||=mc([`matches`,`webkitMatchesSelector`,`mozMatchesSelector`,`msMatchesSelector`,`oMatchesSelector`],function(t){return hc(e[t])})??``;let n=e[wc];return hc(n)?!!n.call(e,t):!1}function Ec(e,t,n){let r=e;do{if(Tc(r,t))return!0;if(r===n)return!1;r=r.parentNode}while(r);return!1}function Dc(e,t,n,r){if(!e)return;let i={capture:!0,...r},a=n;e.addEventListener?e.addEventListener(t,a,i):e.attachEvent?e.attachEvent(`on`+t,a):e[`on`+t]=a}function Oc(e,t,n,r){if(!e)return;let i={capture:!0,...r},a=n;e.removeEventListener?e.removeEventListener(t,a,i):e.detachEvent?e.detachEvent(`on`+t,a):e[`on`+t]=null}function kc(e){let t=e.clientHeight,n=e.ownerDocument.defaultView.getComputedStyle(e);return t+=_c(n.borderTopWidth),t+=_c(n.borderBottomWidth),t}function Ac(e){let t=e.clientWidth,n=e.ownerDocument.defaultView.getComputedStyle(e);return t+=_c(n.borderLeftWidth),t+=_c(n.borderRightWidth),t}function jc(e){let t=e.clientHeight,n=e.ownerDocument.defaultView.getComputedStyle(e);return t-=_c(n.paddingTop),t-=_c(n.paddingBottom),t}function Mc(e){let t=e.clientWidth,n=e.ownerDocument.defaultView.getComputedStyle(e);return t-=_c(n.paddingLeft),t-=_c(n.paddingRight),t}function Nc(e,t,n){let r=t===t.ownerDocument.body?{left:0,top:0}:t.getBoundingClientRect();return{x:(e.clientX+t.scrollLeft-r.left)/n,y:(e.clientY+t.scrollTop-r.top)/n}}function Pc(e,t){let n=Ic(e,t,`px`);return{[xc(`transform`,Cc)]:n}}function Fc(e,t){return Ic(e,t,``)}function Ic({x:e,y:t},n,r){let i=`translate(${e}${r},${t}${r})`;return n&&(i=`translate(${`${typeof n.x==`string`?n.x:n.x+r}`}, ${`${typeof n.y==`string`?n.y:n.y+r}`})`+i),i}function Lc(e,t){return e.targetTouches&&mc(e.targetTouches,e=>t===e.identifier)||e.changedTouches&&mc(e.changedTouches,e=>t===e.identifier)}function Rc(e){if(e.targetTouches&&e.targetTouches[0])return e.targetTouches[0].identifier;if(e.changedTouches&&e.changedTouches[0])return e.changedTouches[0].identifier}function zc(){return typeof __webpack_nonce__<`u`?__webpack_nonce__:void 0}function Bc(e,t){if(!e)return;let n=e.getElementById(`react-draggable-style-el`);if(!n){n=e.createElement(`style`),n.type=`text/css`,n.id=`react-draggable-style-el`;let r=t??zc();r&&n.setAttribute(`nonce`,r),n.innerHTML=`.react-draggable-transparent-selection *::-moz-selection {all: inherit;}
 `,n.innerHTML+=`.react-draggable-transparent-selection *::selection {all: inherit;}
 `,e.getElementsByTagName(`head`)[0].appendChild(n)}e.body&&Uc(e.body,`react-draggable-transparent-selection`)}function Vc(e){window.requestAnimationFrame?window.requestAnimationFrame(()=>{Hc(e)}):Hc(e)}function Hc(e){if(e)try{e.body&&Wc(e.body,`react-draggable-transparent-selection`);let t=e.selection;if(t)t.empty();else{let t=(e.defaultView||window).getSelection();t&&t.type!==`Caret`&&t.removeAllRanges()}}catch{}}function Uc(e,t){e.classList?e.classList.add(t):e.className.match(RegExp(`(?:^|\\s)${t}(?!\\S)`))||(e.className+=` ${t}`)}function Wc(e,t){e.classList?e.classList.remove(t):e.className=e.className.replace(RegExp(`(?:^|\\s)${t}(?!\\S)`,`g`),``)}function Gc(e,t,n){if(!e.props.bounds)return[t,n];let{bounds:r}=e.props;r=typeof r==`string`?r:Qc(r);let i=$c(e);if(typeof r==`string`){let{ownerDocument:e}=i,t=e.defaultView;if(!t)throw Error(`Cannot resolve the owner window of the draggable node.`);let n;if(n=r===`parent`?i.parentNode:i.getRootNode().querySelector(r),!(n instanceof t.HTMLElement))throw Error(`Bounds selector "`+r+`" could not find an element.`);let a=n,o=t.getComputedStyle(i),s=t.getComputedStyle(a);r={left:-i.offsetLeft+_c(s.paddingLeft)+_c(o.marginLeft),top:-i.offsetTop+_c(s.paddingTop)+_c(o.marginTop),right:Mc(a)-Ac(i)-i.offsetLeft+_c(s.paddingRight)-_c(o.marginRight),bottom:jc(a)-kc(i)-i.offsetTop+_c(s.paddingBottom)-_c(o.marginBottom)}}return gc(r.right)&&(t=Math.min(t,r.right)),gc(r.bottom)&&(n=Math.min(n,r.bottom)),gc(r.left)&&(t=Math.max(t,r.left)),gc(r.top)&&(n=Math.max(n,r.top)),[t,n]}function Kc(e,t,n){return[Math.round(t/e[0])*e[0],Math.round(n/e[1])*e[1]]}function qc(e){return e.props.axis===`both`||e.props.axis===`x`}function Jc(e){return e.props.axis===`both`||e.props.axis===`y`}function Yc(e,t,n){let r=typeof t==`number`?Lc(e,t):null;if(typeof t==`number`&&!r)return null;let i=$c(n),a=n.props.offsetParent||i.offsetParent||i.ownerDocument.body;return Nc(r||e,a,n.props.scale)}function Xc(e,t,n){let r=!gc(e.lastX),i=$c(e);return r?{node:i,deltaX:0,deltaY:0,lastX:t,lastY:n,x:t,y:n}:{node:i,deltaX:t-e.lastX,deltaY:n-e.lastY,lastX:e.lastX,lastY:e.lastY,x:t,y:n}}function Zc(e,t){let n=e.props.scale;return{node:t.node,x:e.state.x+t.deltaX/n,y:e.state.y+t.deltaY/n,deltaX:t.deltaX/n,deltaY:t.deltaY/n,lastX:e.state.x,lastY:e.state.y}}function Qc(e){return{left:e.left,top:e.top,right:e.right,bottom:e.bottom}}function $c(e){let t=e.findDOMNode();if(!t)throw Error(`<DraggableCore>: Unmounted during event!`);return t}function el(...e){({}).DRAGGABLE_DEBUG&&console.log(...e)}var tl={touch:{start:`touchstart`,move:`touchmove`,stop:`touchend`},mouse:{start:`mousedown`,move:`mousemove`,stop:`mouseup`}},nl=tl.mouse,rl=class extends _.Component{constructor(){super(...arguments),this.dragging=!1,this.lastX=NaN,this.lastY=NaN,this.touchIdentifier=null,this.mounted=!1,this.handleDragStart=e=>{if(this.props.onMouseDown(e),!this.props.allowAnyClick&&(typeof e.button==`number`&&e.button!==0||e.ctrlKey))return!1;let t=this.findDOMNode();if(!t||!t.ownerDocument||!t.ownerDocument.body)throw Error(`<DraggableCore> not mounted on DragStart!`);let{ownerDocument:n}=t;if(this.props.disabled||!(e.target instanceof n.defaultView.Node)||this.props.handle&&!Ec(e.target,this.props.handle,t)||this.props.cancel&&Ec(e.target,this.props.cancel,t))return;e.type===`touchstart`&&!this.props.allowMobileScroll&&e.preventDefault();let r=Rc(e);this.touchIdentifier=r;let i=Yc(e,r,this);if(i==null)return;let{x:a,y:o}=i,s=Xc(this,a,o);el(`DraggableCore: handleDragStart: %j`,s),el(`calling`,this.props.onStart),!(this.props.onStart(e,s)===!1||this.mounted===!1)&&(this.props.enableUserSelectHack&&Bc(n,this.props.nonce),this.dragging=!0,this.lastX=a,this.lastY=o,Dc(n,nl.move,this.handleDrag),Dc(n,nl.stop,this.handleDragStop))},this.handleDrag=e=>{let t=Yc(e,this.touchIdentifier,this);if(t==null)return;let{x:n,y:r}=t;if(Array.isArray(this.props.grid)){let e=n-this.lastX,t=r-this.lastY;if([e,t]=Kc(this.props.grid,e,t),!e&&!t)return;n=this.lastX+e,r=this.lastY+t}let i=Xc(this,n,r);if(el(`DraggableCore: handleDrag: %j`,i),this.props.onDrag(e,i)===!1||this.mounted===!1){try{this.handleDragStop(new MouseEvent(`mouseup`))}catch{let e=document.createEvent(`MouseEvents`);e.initMouseEvent(`mouseup`,!0,!0,window,0,0,0,0,0,!1,!1,!1,!1,0,null),this.handleDragStop(e)}return}this.lastX=n,this.lastY=r},this.handleDragStop=e=>{if(!this.dragging)return;let t=Yc(e,this.touchIdentifier,this);if(t==null)return;let{x:n,y:r}=t;if(Array.isArray(this.props.grid)){let e=n-this.lastX||0,t=r-this.lastY||0;[e,t]=Kc(this.props.grid,e,t),n=this.lastX+e,r=this.lastY+t}let i=Xc(this,n,r);if(this.props.onStop(e,i)===!1||this.mounted===!1)return!1;let a=this.findDOMNode();a&&this.props.enableUserSelectHack&&Vc(a.ownerDocument),el(`DraggableCore: handleDragStop: %j`,i),this.dragging=!1,this.lastX=NaN,this.lastY=NaN,a&&(el(`DraggableCore: Removing handlers`),Oc(a.ownerDocument,nl.move,this.handleDrag),Oc(a.ownerDocument,nl.stop,this.handleDragStop))},this.onMouseDown=e=>(nl=tl.mouse,this.handleDragStart(e)),this.onMouseUp=e=>(nl=tl.mouse,this.handleDragStop(e)),this.onTouchStart=e=>(nl=tl.touch,this.handleDragStart(e)),this.onTouchEnd=e=>(nl=tl.touch,this.handleDragStop(e))}componentDidMount(){this.mounted=!0;let e=this.findDOMNode();e&&Dc(e,tl.touch.start,this.onTouchStart,{passive:!1})}componentWillUnmount(){this.mounted=!1;let e=this.findDOMNode();if(e){let{ownerDocument:t}=e;Oc(t,tl.mouse.move,this.handleDrag),Oc(t,tl.touch.move,this.handleDrag),Oc(t,tl.mouse.stop,this.handleDragStop),Oc(t,tl.touch.stop,this.handleDragStop),Oc(e,tl.touch.start,this.onTouchStart,{passive:!1}),this.props.enableUserSelectHack&&Vc(t)}}findDOMNode(){if(this.props?.nodeRef)return this.props.nodeRef.current;let e=pc.default;return typeof e.findDOMNode==`function`?e.findDOMNode(this):(el(`react-draggable: ReactDOM.findDOMNode is not available in React 19+. You must provide a nodeRef prop. See: https://github.com/react-grid-layout/react-draggable#noderef`),null)}render(){return _.cloneElement(_.Children.only(this.props.children),{onMouseDown:this.onMouseDown,onMouseUp:this.onMouseUp,onTouchEnd:this.onTouchEnd})}};rl.displayName=`DraggableCore`,rl.propTypes={allowAnyClick:U.default.bool,allowMobileScroll:U.default.bool,children:U.default.node.isRequired,disabled:U.default.bool,enableUserSelectHack:U.default.bool,offsetParent:function(e,t){if(e[t]&&e[t].nodeType!==1)throw Error(`Draggable's offsetParent must be a DOM Node.`)},grid:U.default.arrayOf(U.default.number),handle:U.default.string,cancel:U.default.string,nodeRef:U.default.object,nonce:U.default.string,onStart:U.default.func,onDrag:U.default.func,onStop:U.default.func,onMouseDown:U.default.func,scale:U.default.number,className:vc,style:vc,transform:vc},rl.defaultProps={allowAnyClick:!1,allowMobileScroll:!1,disabled:!1,enableUserSelectHack:!0,onStart:function(){},onDrag:function(){},onStop:function(){},onMouseDown:function(){},scale:1};var il=class extends _.Component{constructor(e){super(e),this.onDragStart=(e,t)=>{if(el(`Draggable: onDragStart: %j`,t),this.props.onStart(e,Zc(this,t))===!1)return!1;this.setState({dragging:!0,dragged:!0})},this.onDrag=(e,t)=>{if(!this.state.dragging)return!1;el(`Draggable: onDrag: %j`,t);let n=Zc(this,t),r={x:n.x,y:n.y,slackX:0,slackY:0};if(this.props.bounds){let{x:e,y:t}=r;r.x+=this.state.slackX,r.y+=this.state.slackY;let[i,a]=Gc(this,r.x,r.y);r.x=i,r.y=a,r.slackX=this.state.slackX+(e-r.x),r.slackY=this.state.slackY+(t-r.y),n.x=r.x,n.y=r.y,n.deltaX=r.x-this.state.x,n.deltaY=r.y-this.state.y}if(this.props.onDrag(e,n)===!1)return!1;this.setState(r)},this.onDragStop=(e,t)=>{if(!this.state.dragging||this.props.onStop(e,Zc(this,t))===!1)return!1;el(`Draggable: onDragStop: %j`,t);let n={dragging:!1,slackX:0,slackY:0};if(this.props.position){let{x:e,y:t}=this.props.position;n.x=e,n.y=t}this.setState(n)},this.state={dragging:!1,dragged:!1,x:e.position?e.position.x:e.defaultPosition.x,y:e.position?e.position.y:e.defaultPosition.y,prevPropsPosition:{...e.position},slackX:0,slackY:0,isElementSVG:!1},e.position&&!(e.onDrag||e.onStop)&&console.warn("A `position` was applied to this <Draggable>, without drag handlers. This will make this component effectively undraggable. Please attach `onDrag` or `onStop` handlers so you can adjust the `position` of this element.")}static getDerivedStateFromProps({position:e},{prevPropsPosition:t}){return e&&(!t||e.x!==t.x||e.y!==t.y)?(el(`Draggable: getDerivedStateFromProps %j`,{position:e,prevPropsPosition:t}),{x:e.x,y:e.y,prevPropsPosition:{...e}}):null}componentDidMount(){window.SVGElement!==void 0&&this.findDOMNode()instanceof window.SVGElement&&this.setState({isElementSVG:!0})}componentWillUnmount(){this.state.dragging&&this.setState({dragging:!1})}findDOMNode(){if(this.props?.nodeRef)return this.props.nodeRef.current;let e=pc.default;return typeof e.findDOMNode==`function`?e.findDOMNode(this):null}render(){let{axis:e,bounds:t,children:n,defaultPosition:r,defaultClassName:i,defaultClassNameDragging:a,defaultClassNameDragged:o,position:s,positionOffset:c,scale:l,...u}=this.props,d={},f=null,p=!s||this.state.dragging,m=s||r,h={x:qc(this)&&p?this.state.x:m.x,y:Jc(this)&&p?this.state.y:m.y};this.state.isElementSVG?f=Fc(h,c):d=Pc(h,c);let g=_.Children.only(n),v=fc(g.props.className||``,i,{[a]:this.state.dragging,[o]:this.state.dragged});return _.createElement(rl,{...u,onStart:this.onDragStart,onDrag:this.onDrag,onStop:this.onDragStop},_.cloneElement(g,{className:v,style:{...g.props.style,...d},transform:f}))}};il.displayName=`Draggable`,il.propTypes={...rl.propTypes,axis:U.default.oneOf([`both`,`x`,`y`,`none`]),bounds:U.default.oneOfType([U.default.shape({left:U.default.number,right:U.default.number,top:U.default.number,bottom:U.default.number}),U.default.string,U.default.oneOf([!1])]),defaultClassName:U.default.string,defaultClassNameDragging:U.default.string,defaultClassNameDragged:U.default.string,defaultPosition:U.default.shape({x:U.default.number,y:U.default.number}),positionOffset:U.default.shape({x:U.default.oneOfType([U.default.number,U.default.string]),y:U.default.oneOfType([U.default.number,U.default.string])}),position:U.default.shape({x:U.default.number,y:U.default.number}),className:vc,style:vc,transform:vc},il.defaultProps={...rl.defaultProps,axis:`both`,bounds:!1,defaultClassName:`react-draggable`,defaultClassNameDragging:`react-draggable-dragging`,defaultClassNameDragged:`react-draggable-dragged`,defaultPosition:{x:0,y:0},scale:1};var al=o(((e,t)=>{function n(e){var t,r,i=``;if(typeof e==`string`||typeof e==`number`)i+=e;else if(typeof e==`object`)if(Array.isArray(e)){var a=e.length;for(t=0;t<a;t++)e[t]&&(r=n(e[t]))&&(i&&(i+=` `),i+=r)}else for(r in e)e[r]&&(i&&(i+=` `),i+=r);return i}function r(){for(var e,t,r=0,i=``,a=arguments.length;r<a;r++)(e=arguments[r])&&(t=n(e))&&(i&&(i+=` `),i+=t);return i}t.exports=r,t.exports.clsx=r})),ol=o(((e,t)=>{var n=Object.create,r=Object.defineProperty,i=Object.getOwnPropertyDescriptor,a=Object.getOwnPropertyNames,o=Object.getPrototypeOf,s=Object.prototype.hasOwnProperty,c=(e,t)=>{for(var n in t)r(e,n,{get:t[n],enumerable:!0})},l=(e,t,n,o)=>{if(t&&typeof t==`object`||typeof t==`function`)for(let c of a(t))!s.call(e,c)&&c!==n&&r(e,c,{get:()=>t[c],enumerable:!(o=i(t,c))||o.enumerable});return e},d=(e,t,i)=>(i=e==null?{}:n(o(e)),l(t||!e||!e.__esModule?r(i,`default`,{value:e,enumerable:!0}):i,e)),f=e=>l(r({},`__esModule`,{value:!0}),e),p={};c(p,{DraggableCore:()=>k,default:()=>A}),t.exports=f(p);var h=d(u()),g=d(uc()),_=d(m()),v=al();function y(e,t){for(let n=0,r=e.length;n<r;n++)if(t.apply(t,[e[n],n,e]))return e[n]}function b(e){return typeof e==`function`||Object.prototype.toString.call(e)===`[object Function]`}function x(e){return typeof e==`number`&&!isNaN(e)}function S(e){return parseInt(e,10)}function C(e,t,n){if(e[t])return Error(`Invalid prop ${t} passed to ${n} - do not set this, set it on the child.`)}var w=[`Moz`,`Webkit`,`O`,`ms`];function T(e=`transform`){if(typeof window>`u`)return``;let t=window.document?.documentElement?.style;if(!t||e in t)return``;for(let n=0;n<w.length;n++)if(ee(e,w[n])in t)return w[n];return``}function ee(e,t){return t?`${t}${te(e)}`:e}function te(e){let t=``,n=!0;for(let r=0;r<e.length;r++)n?(t+=e[r].toUpperCase(),n=!1):e[r]===`-`?n=!0:t+=e[r];return t}var ne=T(),re=``;function ie(e,t){re||=y([`matches`,`webkitMatchesSelector`,`mozMatchesSelector`,`msMatchesSelector`,`oMatchesSelector`],function(t){return b(e[t])})??``;let n=e[re];return b(n)?!!n.call(e,t):!1}function ae(e,t,n){let r=e;do{if(ie(r,t))return!0;if(r===n)return!1;r=r.parentNode}while(r);return!1}function oe(e,t,n,r){if(!e)return;let i={capture:!0,...r},a=n;e.addEventListener?e.addEventListener(t,a,i):e.attachEvent?e.attachEvent(`on`+t,a):e[`on`+t]=a}function se(e,t,n,r){if(!e)return;let i={capture:!0,...r},a=n;e.removeEventListener?e.removeEventListener(t,a,i):e.detachEvent?e.detachEvent(`on`+t,a):e[`on`+t]=null}function ce(e){let t=e.clientHeight,n=e.ownerDocument.defaultView.getComputedStyle(e);return t+=S(n.borderTopWidth),t+=S(n.borderBottomWidth),t}function le(e){let t=e.clientWidth,n=e.ownerDocument.defaultView.getComputedStyle(e);return t+=S(n.borderLeftWidth),t+=S(n.borderRightWidth),t}function E(e){let t=e.clientHeight,n=e.ownerDocument.defaultView.getComputedStyle(e);return t-=S(n.paddingTop),t-=S(n.paddingBottom),t}function D(e){let t=e.clientWidth,n=e.ownerDocument.defaultView.getComputedStyle(e);return t-=S(n.paddingLeft),t-=S(n.paddingRight),t}function ue(e,t,n){let r=t===t.ownerDocument.body?{left:0,top:0}:t.getBoundingClientRect();return{x:(e.clientX+t.scrollLeft-r.left)/n,y:(e.clientY+t.scrollTop-r.top)/n}}function de(e,t){let n=pe(e,t,`px`);return{[ee(`transform`,ne)]:n}}function fe(e,t){return pe(e,t,``)}function pe({x:e,y:t},n,r){let i=`translate(${e}${r},${t}${r})`;return n&&(i=`translate(${`${typeof n.x==`string`?n.x:n.x+r}`}, ${`${typeof n.y==`string`?n.y:n.y+r}`})`+i),i}function me(e,t){return e.targetTouches&&y(e.targetTouches,e=>t===e.identifier)||e.changedTouches&&y(e.changedTouches,e=>t===e.identifier)}function O(e){if(e.targetTouches&&e.targetTouches[0])return e.targetTouches[0].identifier;if(e.changedTouches&&e.changedTouches[0])return e.changedTouches[0].identifier}function he(){return typeof __webpack_nonce__<`u`?__webpack_nonce__:void 0}function ge(e,t){if(!e)return;let n=e.getElementById(`react-draggable-style-el`);if(!n){n=e.createElement(`style`),n.type=`text/css`,n.id=`react-draggable-style-el`;let r=t??he();r&&n.setAttribute(`nonce`,r),n.innerHTML=`.react-draggable-transparent-selection *::-moz-selection {all: inherit;}
