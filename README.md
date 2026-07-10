@@ -1,4 +1,4 @@
-# Mega Visualizer
+# @Mega Visualizer | DEMO: (https://shubin123.github.io/avr_visual/)
 
 A browser-based AVR assembler and visual debugger for the ATmega2560 (Arduino
 Mega 2560), built around a real HD44780 LCD and the 6-LED module used in the
