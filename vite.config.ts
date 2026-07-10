@@ -15,6 +15,13 @@ export default defineConfig({
   // main, so the build has to land there instead of Vite's default dist/.
   build: {
     outDir: 'docs',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name].js',
+        chunkFileNames: 'assets/[name].js',
+        assetFileNames: 'assets/[name].[ext]',
+      },
+    },
   },
   // react-draggable (a react-grid-layout dependency) reads process.env.* for
   // a debug flag, assuming a Node-style global that Vite doesn't shim in the
