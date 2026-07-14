@@ -103,6 +103,11 @@ describe('Emulator — assembled program driving real avr8js peripherals', () =>
     const row0 = Array.from(lcd.getDisplayState().characters.slice(0, 16))
       .map((c) => String.fromCharCode(c))
       .join('');
-    expect(row0).toBe('CSC 230         ');
+    const row1 = Array.from(lcd.getDisplayState().characters.slice(16, 32))
+      .map((c) => String.fromCharCode(c))
+      .join('');
+    expect(row0).toBe('                ');
+    expect(row1.slice(0, 15)).toBe('   Hello, world');
   });
 });
+
