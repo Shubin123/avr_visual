@@ -31,7 +31,14 @@ export class Emulator {
   }
 
   private initPeripherals() {
-    this.cpu = new CPU(this.program, CPU_SRAM_BYTES);
+    // ATmega2560 has 256KB of flash (128K words = 131072 words).
+    // avr8js determines PC size (2 bytes vs 3 bytes) based on program.length.
+    // We pad the program to the full 128K words so avr8js correctly uses a 3-byte PC,
+    // which matches the compiled assembly's stack offset expectation (SP_OFFSET = 3).
+    const paddedProgram = new Uint16Array(131072);
+    paddedProgram.set(this.program);
+
+    this.cpu = new CPU(paddedProgram, CPU_SRAM_BYTES);
     this.cpu.SP = RAMEND;
     this.ports = {};
     for (const [name, cfg] of Object.entries(mega2560Ports)) {

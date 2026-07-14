@@ -11,7 +11,7 @@ start:
     clr r20           ; Timer 1 counter
     clr r21           ; Timer 2 counter
 
-loop:
+main_loop:
     inc r20
     cpi r20, 10
     brne check_t2
@@ -27,7 +27,7 @@ check_t2:
 
 main_delay:
     rcall delay
-    rjmp loop
+    rjmp main_loop
 
 toggle_led_0:
     lds r16, PORTL
