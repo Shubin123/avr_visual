@@ -493,3 +493,6 @@ button.file-tab.active {
   display: flex;
   gap: 8px;
 }
+
+.app-header h1 { display: flex; align-items: center; gap: 10px; }
+.project-mark { width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; }
