@@ -1,4 +1,4 @@
-# Mega Visualizer
+# @Mega Visualizer | DEMO: (https://shubin123.github.io/avr_visual/)
 
 A browser-based AVR assembler and visual debugger for the ATmega2560 (Arduino
 Mega 2560), built around a real HD44780 LCD and the 6-LED module used in the
@@ -9,14 +9,20 @@ state updating as the program executes.
 
 ## Running it
 
+### Prerequisites
+* **Node.js**: Version `22.12.0` or higher is required. A `.nvmrc` file is provided, and you can switch to the correct version using `nvm use`.
+* **Private Examples**: This project references files from a private `/examples` directory. To ensure the application builds successfully out of the box on a fresh clone, the build/dev process automatically generates stubs for any missing examples (e.g. if the directory is ignored/not cloned). If you have the actual course assembly files, simply place them in `/examples` and they will be used instead.
+
 ```bash
+nvm use          # optional: select correct Node version via NVM
 npm install
 npm run dev      # starts the Vite dev server
 npm test         # runs the assembler/encoder/emulator test suite
-npm run build    # type-checks and produces a production build
+npm run build    # type-checks and produces a production build (without asset hashing)
 ```
 
 ## Architecture
+
 
 - **`src/isa/instructions.ts`** — the AVR instruction encoder. Every opcode
   bit pattern is transcribed directly from the official Microchip *AVR
